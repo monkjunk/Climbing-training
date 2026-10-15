@@ -123,7 +123,6 @@ a.list-row{color:var(--teal)}
 .illus{background:var(--bg);border-radius:12px;padding:6px;display:flex;justify-content:center}
 .rehab-row{padding:12px 0 2px}
 .rehab-row+.rehab-row{border-top:1px solid var(--line);margin-top:10px}
-.dots{display:inline-flex;gap:4px;align-items:center}
 .dot{width:9px;height:9px;border-radius:50%;background:var(--raised);border:1px solid var(--line)}
 .dot.on{background:var(--accent,var(--teal));border-color:transparent}
 .pill.done{background:color-mix(in srgb,var(--accent,var(--teal)) 24%,var(--surface));color:var(--text)}
@@ -137,6 +136,15 @@ a.list-row{color:var(--teal)}
 .mini td{text-align:center;padding:7px 2px;border-top:1px solid var(--line);font-family:var(--round);font-variant-numeric:tabular-nums;color:var(--muted)}
 .mini tbody th{border-top:1px solid var(--line)}
 .mini td.hit{color:var(--teal);font-weight:700}
+.guided{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom,0px) + 66px);width:calc(100% - 24px);max-width:516px;display:flex;align-items:center;gap:12px;padding:10px 10px 10px 16px;border-radius:18px;background:var(--raised);border:1px solid var(--line);z-index:26;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,.45)}
+.guided-fill{position:absolute;left:0;top:0;bottom:0;background:color-mix(in srgb,var(--accent,var(--teal)) 24%,transparent);z-index:-1;transition:width .12s linear}
+.guided.work{border-color:var(--accent,var(--teal))}
+.guided.work .guided-fill{background:color-mix(in srgb,var(--accent,var(--teal)) 40%,transparent)}
+.guided-main{flex:1;min-width:0}
+.guided-phase{display:block;font-family:var(--round);font-weight:700;font-size:19px;line-height:1.15}
+.guided-count{font-family:var(--round);font-size:34px;font-weight:700;line-height:1;min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
+.guided.done{border-color:var(--accent,var(--teal))}
+.dots{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -451,8 +459,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
    No personal or medical details live in this code. Everything about the person using it
    (injuries, logs, check-ins, notes) is stored only on their own device. */
 const { useState, useEffect, useRef, useCallback } = React;
-const APP_VERSION = '3.3';
-const APP_BUILD = '2026-10-07';
+const APP_VERSION = '3.5';
+const APP_BUILD = '2026-10-14';
 const NS = 'tc3:';
 const OLD_NS = 'training-companion:';
 /* ---------- Dates: always the phone's LOCAL calendar date, never UTC ---------- */
@@ -632,8 +640,114 @@ const MODES = {
         desc: 'The complete climbing plan: power endurance first, then grip positions, technique and outdoor.',
         templates: ['P1', 'P2', 'P3', 'P4'],
     },
+    // A short, temporary mode. It remembers the mode you came from and offers it back when the days are up.
+    tattoo: {
+        name: 'Tattoo recovery',
+        desc: 'Temporary and low intensity while fresh ink heals: nothing that makes you sweat hard, and nothing that stretches or rubs the piece.',
+        templates: ['TW', 'TM', 'TS', 'TC'],
+        temporary: true,
+    },
 };
-const OPTIONAL_SESSIONS = ['CLIMB', 'CORE', 'REC']; // always choosable, never auto-rotated
+/* ---------- Tattoo recovery: what's sensible on each day ---------- */
+const TATTOO_DEFAULT_DAYS = 14;
+const TATTOO_PHASES = [
+    { id: 'fresh', from: 1, to: 3, label: 'Fresh, still an open wound',
+        detail: 'Walking and breathing only. Heavy sweating, stretching the skin and gym surfaces are all off the table while it’s weeping.',
+        pick: ['TW'] },
+    { id: 'scabs', from: 4, to: 10, label: 'Scabbing and flaking',
+        detail: 'This is the stretch that matters: a cracked scab is how ink is lost. Easy movement and gentle strength in a cool room, stopping before you break a sweat. Nothing rubs the piece.',
+        pick: ['TM', 'TS'] },
+    { id: 'closing', from: 11, to: 99, label: 'Peeling, skin closing over',
+        detail: 'Sweat is allowed again. Build it back up over a couple of sessions. Your hands stay out of it until the skin is fully closed: no gripping, no chalk, nothing held.',
+        pick: ['TC', 'TS', 'TM'] },
+];
+const TATTOO_PLACEMENTS = [
+    { value: 'forearm', label: 'Forearms or hands' },
+    { value: 'arm', label: 'Upper arm or shoulder' },
+    { value: 'other', label: 'Somewhere else' },
+];
+/* What comes out of training while it heals, and why. The reasons matter more than the list:
+   they let you judge a movement the plan doesn't mention. */
+const TATTOO_AVOID = {
+    forearm: [
+        'Hanging, gripping, the hangboard and bloc lifts. A hard grip swells the forearm and drags the skin over it, which is how ink is lost.',
+        'Chalk anywhere near the piece. It is still an open wound, and chalk is abrasive and filthy.',
+        'Planks, side planks and Copenhagens. Your forearm is pressed into the floor for the whole set.',
+        'Dumbbells, kettlebells, barbells and goblet squats. They sit in your hands and rest against your forearms.',
+        'Rowing machines, carries, and anything with a handle. Holding the treadmill rails counts.',
+        'Setting and climbing, the spray wall included.',
+        'Tight sleeves and cuffs dragging over the piece while you move.',
+    ],
+    arm: [
+        'Hanging and the hangboard. A full hang stretches the skin right across your upper arm and shoulder.',
+        'Overhead pressing, bar-on-the-back squats, and anything that drags a strap or bar across the piece.',
+        'Dumbbell work for the shoulder, including your physio’s flyes, external rotations and complex.',
+        'Chalk near the piece, and gym surfaces against it.',
+        'Setting and climbing, the spray wall included.',
+    ],
+    other: [
+        'Anything that stretches, presses or rubs the piece. Test it with one slow rep: if it tugs, swap it.',
+        'Setting and climbing while it is scabbing, because you can’t control what touches you.',
+    ],
+};
+// Resumed in this order once the skin has closed, not all on the same day.
+const TATTOO_RETURN = [
+    'Physio rehab first, at the loads you stopped at rather than where you would have progressed to.',
+    'Chalk only once the skin is completely closed and no longer flaking. On forearms that is usually late in week two, sometimes week three.',
+    'Then easy climbing, and setting last.',
+];
+const TATTOO_RULES = [
+    'Stop before you’re properly sweating, and rinse gently with clean water afterwards.',
+    'Nothing that stretches, presses or rubs the piece. If a movement tugs at it, swap the movement.',
+    'Wipe equipment down and keep the piece covered from shared surfaces.',
+    'No soaking for 2 weeks: no pools, lakes, hot tubs or long baths. Showers are fine.',
+    'Keep it out of the sun for a month, including belay-ledge and crag sun.',
+    'Hot, red, swollen or painful after day 3 is not normal healing. Get it looked at.',
+];
+const TATTOO_PLACEMENT = 'For a climber, the least disruptive spots are the ones that don’t touch rock and don’t live under chalk: upper back, shoulder blade, outer upper arm, chest, outer thigh. Hands, fingers and inner forearms are the worst of all: chalk, abrasion and every hold you touch.';
+const OPTIONAL_SESSIONS = ['CLIMB', 'CORE', 'FREE', 'REC']; // always choosable, never auto-rotated
+/* ---------- Movement patterns ----------
+   Every exercise is tagged with what it actually trains, so anything you log — a session
+   from the plan or something you made up at the gym — can tell the app what's already covered. */
+const PATTERNS = {
+    pull: { label: 'pulling', n: 'Pulling' },
+    push: { label: 'pushing', n: 'Pushing' },
+    legs: { label: 'legs', n: 'Legs' },
+    hinge: { label: 'hinge and posterior chain', n: 'Hinge' },
+    core: { label: 'core', n: 'Core' },
+    grip: { label: 'fingers', n: 'Fingers and grip' },
+    shoulder: { label: 'shoulder work', n: 'Shoulders' },
+    cardio: { label: 'conditioning', n: 'Conditioning' },
+    mobility: { label: 'mobility', n: 'Mobility' },
+    skill: { label: 'technique', n: 'Technique' },
+};
+const PATTERN_IDS = Object.keys(PATTERNS);
+// First match wins, so the specific words come before the general ones.
+const PATTERN_GUESS = [
+    ['grip', /hang|crimp|campus|finger|bloc|grip|edge|pinch|tindeq|board|climb|bouldering|traverse/i],
+    ['pull', /pull-?up|chin-?up|row|lat |pulldown|lock-?off|muscle-?up|front lever|curl(?!.*ham)|biceps/i],
+    ['push', /push-?up|bench|press|dip|overhead|shoulder press|tricep/i],
+    ['hinge', /deadlift|rdl|hinge|hamstring|glute|hip thrust|back ext|good morning|nordic/i],
+    ['legs', /squat|lunge|leg |calf|step-?up|pistol|split squat|quad|toe curl/i],
+    ['core', /core|ab |abs|plank|hollow|l-?sit|dead ?bug|pallof|sit-?up|crunch|oblique|toe hook|copenhagen/i],
+    ['shoulder', /rotator|external rotation|face pull|scap|wall slide|serratus|flye|w.s and i.s|band/i],
+    ['cardio', /run|jog|bike|cycl|row(?:ing)? machine|erg|swim|walk|cardio|interval|stair|elliptic|skip/i],
+    ['mobility', /mobility|stretch|yoga|flexib|90\/90|cossack/i],
+    ['skill', /visuali|technique|drill|silent feet|video/i],
+];
+function guessPattern(name) {
+    const n = String(name || '');
+    for (let i = 0; i < PATTERN_GUESS.length; i++)
+        if (PATTERN_GUESS[i][1].test(n))
+            return PATTERN_GUESS[i][0];
+    return null;
+}
+const MEASURES = [
+    { value: 'weight', label: 'Weight × reps' },
+    { value: 'reps', label: 'Reps' },
+    { value: 'hold', label: 'Seconds' },
+    { value: 'time', label: 'Minutes' },
+];
 // Physio rehab runs alongside whatever mode you're in. It has its own weekly count and never
 // counts as a training session, so it can't use up your day, your weekly target or your load.
 const REHAB_IDS = ['FR', 'SR'];
@@ -648,67 +762,71 @@ const STRAP_RULE = 'Use lifting straps or wrist hooks for every pull and any wei
    They never suggest going up and never count as personal bests; the physio decides progressions. */
 const TEMPLATES = {
     A: {
-        id: 'A', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
+        id: 'A', main: 'legs', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
+        express: ['a-warm', 'a-goblet', 'a-bss', 'a-pushup', 'a-wheel'], expressMins: 28,
         ex: [
             { id: 'a-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 10 scap settings, 15 band external rotations per arm and 10 leg swings per side.' },
-            { id: 'a-goblet', n: 'Goblet squat', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 20, how: 'Hold the kettlebell by the horns against your chest with open palms, so your fingers aren’t gripping. Sit down between your heels to full depth, 3 seconds down, then drive up.' },
-            { id: 'a-bss', n: 'Bulgarian split squat', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 8, perHand: true, side: true, how: 'Rear foot on a bench. Dumbbells at your sides in lifting straps, or one held at your chest. Lower until your front thigh is close to parallel.' },
-            { id: 'a-pushup', n: 'Push-up', type: 'reps', sets: 3, lo: 8, hi: 15, harder: 'raise your feet on a bench', how: 'Palms flat, fingers spread. Body in one straight line, chest to the floor.' },
-            { id: 'a-ohp', n: 'Dumbbell overhead press', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 8, perHand: true, how: 'Light grip, ribs down, press straight overhead. Stop if the injured finger complains.' },
-            { id: 'a-dips', n: 'Dips', type: 'reps', sets: 3, lo: 6, hi: 12, harder: 'add a pause at the bottom, then weight', how: 'Palms on the bars, all the way down under control. Use a bench if bar dips are too hard for now.' },
-            { id: 'a-wheel', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'a-cph', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
-            { id: 'a-toecurl', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Builds the strength your toe hooks rely on.' },
+            { id: 'a-goblet', pat: 'legs', n: 'Goblet squat', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 20, how: 'Hold the kettlebell by the horns against your chest with open palms, so your fingers aren’t gripping. Sit down between your heels to full depth, 3 seconds down, then drive up.' },
+            { id: 'a-bss', pat: 'legs', n: 'Bulgarian split squat', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 8, perHand: true, side: true, how: 'Rear foot on a bench. Dumbbells at your sides in lifting straps, or one held at your chest. Lower until your front thigh is close to parallel.' },
+            { id: 'a-pushup', pat: 'push', n: 'Push-up', type: 'reps', sets: 3, lo: 8, hi: 15, harder: 'raise your feet on a bench', how: 'Palms flat, fingers spread. Body in one straight line, chest to the floor.' },
+            { id: 'a-ohp', pat: 'push', n: 'Dumbbell overhead press', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 8, perHand: true, how: 'Light grip, ribs down, press straight overhead. Stop if the injured finger complains.' },
+            { id: 'a-dips', pat: 'push', n: 'Dips', type: 'reps', sets: 3, lo: 6, hi: 12, harder: 'add a pause at the bottom, then weight', how: 'Palms on the bars, all the way down under control. Use a bench if bar dips are too hard for now.' },
+            { id: 'a-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'a-cph', pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
+            { id: 'a-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Builds the strength your toe hooks rely on.' },
         ],
     },
     B: {
-        id: 'B', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
+        id: 'B', main: 'pull', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
+        express: ['b-warm', 'b-rdl', 'b-pullup', 'b-row', 'b-backext'], expressMins: 28,
         ex: [
             { id: 'b-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 15 band pull-aparts, 8 scap pull-ups in straps and 10 bodyweight hip hinges.' },
-            { id: 'b-rdl', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand, in a lifting strap. Hinge back with a flat back, 3 seconds down.' },
-            { id: 'b-pullup', n: 'Strap pull-up', type: 'reps', sets: 4, lo: 5, hi: 8, harder: 'add 2.5 kg, held between your feet', how: 'Lifting straps or wrist hooks on the bar, fingers relaxed so the straps hold your weight. Full hang to chin over the bar.', tip: 'If you feel the injured finger working, stop and check with your physio first.' },
-            { id: 'b-lockoff', n: 'Strap lock-off hold', type: 'hold', sets: 3, lo: 8, hi: 12, side: true, how: 'Pull up with both arms in straps, then hold at 90° on one arm while the other hand rests lightly on your wrist.' },
-            { id: 'b-row', n: 'One-arm dumbbell row', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 16, side: true, how: 'Knee and hand on a bench, dumbbell in a lifting strap. Pull to your hip and squeeze your shoulder blade back.' },
-            { id: 'b-hamcurl', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Use the machine if your gym has one, starting near 20 kg. Otherwise lie face down with an ankle weight. Slow on the way down. Stronger hamstrings mean stronger heel hooks.' },
-            { id: 'b-backext', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
-            { id: 'b-toehook', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold, with open hands on big holds or no hands. At stage 2, add a slow reach with the opposite arm while holding. Stages are in More, under Grip and toe hooks.' },
-            { id: 'b-lsit', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
-            { id: 'b-deadbug', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'b-rdl', pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand, in a lifting strap. Hinge back with a flat back, 3 seconds down.' },
+            { id: 'b-pullup', pat: 'pull', n: 'Strap pull-up', type: 'reps', sets: 4, lo: 5, hi: 8, harder: 'add 2.5 kg, held between your feet', how: 'Lifting straps or wrist hooks on the bar, fingers relaxed so the straps hold your weight. Full hang to chin over the bar.', tip: 'If you feel the injured finger working, stop and check with your physio first.' },
+            { id: 'b-lockoff', pat: 'pull', n: 'Strap lock-off hold', type: 'hold', sets: 3, lo: 8, hi: 12, side: true, how: 'Pull up with both arms in straps, then hold at 90° on one arm while the other hand rests lightly on your wrist.' },
+            { id: 'b-row', pat: 'pull', n: 'One-arm dumbbell row', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 16, side: true, how: 'Knee and hand on a bench, dumbbell in a lifting strap. Pull to your hip and squeeze your shoulder blade back.' },
+            { id: 'b-hamcurl', pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Use the machine if your gym has one, starting near 20 kg. Otherwise lie face down with an ankle weight. Slow on the way down. Stronger hamstrings mean stronger heel hooks.' },
+            { id: 'b-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
+            { id: 'b-toehook', pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold, with open hands on big holds or no hands. At stage 2, add a slow reach with the opposite arm while holding. Stages are in More, under Grip and toe hooks.' },
+            { id: 'b-lsit', pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
+            { id: 'b-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
         ],
     },
     C: {
         id: 'C', name: 'Session C', focus: 'Conditioning and mobility', color: 'var(--blue)', mins: 45,
+        express: ['c-intervals', 'c-mobility'], expressMins: 25,
         ex: [
-            { id: 'c-intervals', n: 'Intervals', type: 'time', target: 22, how: 'Bike, run or incline walk. Skip the rower, it’s a grip exercise. 10–12 rounds of 1 minute hard and 1 minute easy. You should be breathing hard by round three. Every other week, swap for 40 minutes steady.' },
-            { id: 'c-mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 3 × 10–15 s per side.\n90/90 hip switches, 3 × 8.\nActive high-step holds, 3 × 8 s per leg.\nHip flexor stretch, 2 × 45 s per side.\nBand clamshells, 3 × 15 per side.' },
-            { id: 'c-movement', n: 'Movement drills', type: 'check', how: 'Routine A or B from More, under Movement drills. Crawls use flat hands with fingers spread, so your fingers stay unloaded.' },
-            { id: 'c-visual', n: 'Visualization', type: 'check', how: '5 minutes. Rehearse one project or comp problem in detail: each hold, your body position and your breathing on the crux.' },
+            { id: 'c-intervals', pat: 'cardio', n: 'Intervals', type: 'time', target: 22, how: 'Bike, run or incline walk. Skip the rower, it’s a grip exercise. 10–12 rounds of 1 minute hard and 1 minute easy. You should be breathing hard by round three. Every other week, swap for 40 minutes steady.' },
+            { id: 'c-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 3 × 10–15 s per side.\n90/90 hip switches, 3 × 8.\nActive high-step holds, 3 × 8 s per leg.\nHip flexor stretch, 2 × 45 s per side.\nBand clamshells, 3 × 15 per side.' },
+            { id: 'c-movement', pat: 'skill', n: 'Movement drills', type: 'check', how: 'Routine A or B from More, under Movement drills. Crawls use flat hands with fingers spread, so your fingers stay unloaded.' },
+            { id: 'c-visual', pat: 'skill', n: 'Visualization', type: 'check', how: '5 minutes. Rehearse one project or comp problem in detail: each hold, your body position and your breathing on the crux.' },
         ],
     },
     REC: {
-        id: 'REC', name: 'Recovery', focus: 'Easy movement, nothing hard', color: 'var(--sage)', mins: 30,
+        id: 'REC', name: 'Recovery', focus: 'Easy movement, nothing hard', color: 'var(--sage)', mins: 30, noStraps: true,
         ex: [
-            { id: 'r-cardio', n: 'Easy cardio', type: 'time', target: 25, how: 'Bike or walk at a pace where you could hold a conversation.' },
-            { id: 'r-mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches and the hip flexor stretch. Gentle, no straining.' },
+            { id: 'r-cardio', pat: 'cardio', n: 'Easy cardio', type: 'time', target: 25, how: 'Bike or walk at a pace where you could hold a conversation.' },
+            { id: 'r-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches and the hip flexor stretch. Gentle, no straining.' },
             { id: 'r-breath', n: 'Breathing', type: 'check', how: '5 minutes lying down, breathing slowly through your nose, with each breath out longer than the breath in.' },
         ],
     },
     CLIMB: {
-        id: 'CLIMB', name: 'Climbing session', focus: 'Log any climbing you did: gym, slab or outdoor', color: 'var(--gold)', mins: 90,
+        id: 'CLIMB', main: 'grip', name: 'Climbing session', focus: 'Log any climbing you did: gym, slab or outdoor', color: 'var(--gold)', mins: 90,
         ex: [
             { id: 'cl-warm', n: 'Warm-up', type: 'check', how: '10–15 minutes of easy climbing, plus scap settings and band external rotations.' },
-            { id: 'cl-climb', n: 'Climbing', type: 'time', target: 90, how: 'Log how long you climbed. When you finish, add a note about the style (slab, board, crimpy, steep) and how the finger felt.\n' + PHYSIO_ADVICE },
+            { id: 'cl-climb', pat: ['grip', 'pull'], n: 'Climbing', type: 'time', target: 90, how: 'Log how long you climbed. When you finish, add a note about the style (slab, board, crimpy, steep) and how the finger felt.\n' + PHYSIO_ADVICE },
         ],
     },
     CORE: {
-        id: 'CORE', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
+        id: 'CORE', main: 'core', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
+        express: ['k-deadbug', 'k-wheel', 'k-backext'], expressMins: 15,
         ex: [
-            { id: 'k-deadbug', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
-            { id: 'k-wheel', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'k-backext', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
-            { id: 'k-reach', n: 'Side plank reach-through', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, harder: 'raise your top leg while you do it', how: 'Side plank on your forearm. Thread your top arm under your body, then rotate it open toward the ceiling. Hips stay high the whole time.' },
-            { id: 'k-cph', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
-            { id: 'k-lsit', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
+            { id: 'k-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'k-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'k-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
+            { id: 'k-reach', pat: 'core', n: 'Side plank reach-through', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, harder: 'raise your top leg while you do it', how: 'Side plank on your forearm. Thread your top arm under your body, then rotate it open toward the ceiling. Hips stay high the whole time.' },
+            { id: 'k-cph', pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
+            { id: 'k-lsit', pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
         ],
     },
     FR: {
@@ -718,14 +836,14 @@ const TEMPLATES = {
         painLabel: 'Finger pain during, 0 to 10',
         ex: [
             { id: 'fr-warm', n: 'Warm-up', type: 'check', how: 'A few minutes of easy movement and 10 tendon glides, then 2–3 easy hangs with your feet on the floor, building up to bodyweight.' },
-            { id: 'fr-hang', n: 'Bodyweight hangs', type: 'hold', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true,
+            { id: 'fr-hang', pat: 'grip', n: 'Bodyweight hangs', type: 'hold', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, timing: { work: 10, between: 3, reps: 3, cue: 'Hang' },
                 dose: '3 sets of 3 × 10 s holds, 1 min rest between sets', short: '3 × 3 × 10 s',
                 how: '20 mm or bigger edge, full bodyweight. Each set is three 10-second hangs with a short break between them. Rest 1 minute between sets.' },
-            { id: 'fr-bloc', n: 'Single-finger crimp bloc lifts', type: 'weight', sets: 3, lo: 3, hi: 3, rest: 60, rehab: true,
+            { id: 'fr-bloc', pat: 'grip', n: 'Single-finger crimp bloc lifts', type: 'weight', sets: 3, lo: 3, hi: 3, rest: 60, rehab: true, timing: { work: 10, between: 3, reps: 3, cue: 'Lift' },
                 dose: '3 sets of 3 × 10 s holds, 1 min rest between sets', short: '3 × 3 × 10 s',
                 how: '15 mm or bigger edge. Crimp the bloc with one finger and lift the load just clear of the floor. Each set is three 10-second holds. Rest 1 minute between sets. Log the load and how many holds you did.',
                 tip: 'Load guide: as close as you can to 50% of that finger’s previous figure, building toward 80% of the same finger on your good hand. If your physio gave you a load, use theirs.' },
-            { id: 'fr-traverse', n: 'Spray wall traversing', type: 'hold', sets: 3, lo: 60, hi: 60, rest: 120, rehab: true,
+            { id: 'fr-traverse', pat: 'grip', n: 'Spray wall traversing', type: 'hold', sets: 3, lo: 60, hi: 60, rest: 120, rehab: true, timing: { work: 60, between: 0, reps: 1, cue: 'Traverse' },
                 dose: '3 × 60 s, 2 min rest between sets', short: '3 × 60 s',
                 how: 'Good handholds and good footholds only. Keep moving for 60 seconds, then rest 2 minutes.' },
         ],
@@ -736,70 +854,125 @@ const TEMPLATES = {
         note: 'From your physio, 3–4 times a week: 3 sets of each, with 1 minute between sets.',
         painLabel: 'Shoulder pain during, 0 to 10',
         ex: [
-            { id: 'sr-flye', n: 'Single-arm reverse flye', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 5,
+            { id: 'sr-flye', pat: 'shoulder', n: 'Single-arm reverse flye', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 5, timing: { work: 5, between: 3, reps: 10, cue: 'Hold', sides: ['Left arm', 'Right arm'] },
                 dose: '3 × 10 reps with a 5 s hold, 5 lb, 1 min rest', short: '3 × 10 · 5 lb',
                 how: 'Stay square to the bench. Thumb up. Hold each rep for 5 seconds.' },
-            { id: 'sr-er', n: 'Single-arm external rotation', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 3,
+            { id: 'sr-er', pat: 'shoulder', n: 'Single-arm external rotation', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 3, timing: { work: 5, between: 3, reps: 10, cue: 'Hold', sides: ['Left arm', 'Right arm'] },
                 dose: '3 × 10 reps with a 5 s hold, 3 lb, 1 min rest', short: '3 × 10 · 3 lb',
                 how: 'Same bench set-up as the reverse flye, and stay square to the bench. Keep your elbow tall: don’t let it drop toward the floor. Hold each rep for 5 seconds.' },
-            { id: 'sr-wi', n: 'W’s and I’s', type: 'reps', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true,
+            { id: 'sr-wi', pat: 'shoulder', n: 'W’s and I’s', type: 'reps', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true,
                 dose: '3 × 10 reps, 1 min rest', short: '3 × 10',
                 how: '10 reps per set. Shoulder blades down and back, no shrugging.' },
-            { id: 'sr-complex', n: 'Shoulder complex', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 5, maxLb: 8,
+            { id: 'sr-complex', pat: 'shoulder', n: 'Shoulder complex', type: 'weight', sets: 3, lo: 10, hi: 10, rest: 60, rehab: true, unit: 'lb', startLb: 5, maxLb: 8,
                 dose: '3 × 10 reps, 5–8 lb, 1 min rest', short: '3 × 10 · 5–8 lb',
                 how: 'One rep is all four steps:\n1. Side-lying dumbbell external rotation.\n2. Punch straight out.\n3. Raise the arm up, like the flye.\n4. Reverse the order back to the start.\nWatch for your body rolling backwards to help. That’s compensation, so stay nearer 5 lb if it happens.' },
         ],
     },
+    TW: {
+        id: 'TW', name: 'Walk and breathe', focus: 'The first few days: movement without sweat', color: 'var(--sage)', mins: 45, noStraps: true,
+        note: 'Your skin is still an open wound. Nothing here raises your temperature much, and your arms do nothing at all.',
+        ex: [
+            { id: 'tw-walk', pat: 'cardio', n: 'Easy walk', type: 'time', target: 35, how: 'Outside if it’s cool, otherwise a flat treadmill. Conversational pace, arms swinging free, and don’t hold the rails. Loose clothing that isn’t rubbing, and turn around before you’re warm enough to sweat.' },
+            { id: 'tw-mob', pat: 'mobility', n: 'Standing mobility', type: 'check', how: 'All upright, with nothing on your hands or forearms.\nLeg swings, 2 × 10 per side, front to back then across.\nStanding hip circles, 2 × 8 per side.\nKneeling hip flexor stretch, hands on your hips, 2 × 45 s per side.\nAnkle rocks against a wall with flat palms, 2 × 10 per side.' },
+            { id: 'tw-visual', pat: 'skill', n: 'Visualization', type: 'check', how: '10 minutes. Pick one project and rehearse it move by move: each hold, each body position, your breathing on the crux. This is the one kind of training that costs your body nothing.' },
+            { id: 'tw-breath', n: 'Breathing', type: 'check', how: '5 minutes lying on your back, arms resting away from your sides, breathing slowly through your nose with each breath out longer than the breath in.' },
+        ],
+    },
+    TM: {
+        id: 'TM', name: 'Mobility and technique', focus: 'Skill work while the skin knits', color: 'var(--sage)', mins: 45, noStraps: true,
+        note: 'Cool room, loose clothing, stop before you sweat. Nothing in your hands, and nothing resting on your forearms.',
+        ex: [
+            { id: 'tm-walk', pat: 'cardio', n: 'Easy walk or bike', type: 'time', target: 25, how: 'Conversational pace, enough to move blood around without heating up. On a bike, rest your hands on the bars rather than gripping, and keep your forearms off the pads.' },
+            { id: 'tm-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 3 × 10–15 s per side, arms out in front for balance.\n90/90 hip switches, 3 × 8, hands on your knees rather than planted behind you.\nActive high-step holds, 3 × 8 s per leg, hands free.\nKneeling hip flexor stretch, 2 × 45 s per side.' },
+            { id: 'tm-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Nothing above your waist is involved, so your toe hooks keep their strength right through the break.' },
+            { id: 'tm-video', pat: 'skill', n: 'Watch and read climbing', type: 'check', how: '15 minutes of video of your own projects or of climbers who move the way you want to. Pause and name what their feet are doing. Free technique while you can’t pull.' },
+            { id: 'tm-visual', pat: 'skill', n: 'Visualization', type: 'check', how: '10 minutes. One problem, move by move, in real time.' },
+            { id: 'tm-neck', n: 'Chin tucks', type: 'check', how: '10 × 2 seconds, chin straight back rather than down. Add the shoulder ball and stretch only if the ink is nowhere near your shoulder.' },
+        ],
+    },
+    TS: {
+        id: 'TS', name: 'Gentle strength', focus: 'Legs and core, with your arms doing nothing', color: 'var(--sage)', mins: 35, noStraps: true,
+        note: 'Every one of these works with empty hands and your forearms off the floor. Cool room, long rests, stop well short. Maintenance, not training.',
+        ex: [
+            { id: 'ts-warm', n: 'Warm-up', type: 'check', how: '5 minutes of easy walking, then 10 leg swings per side and 10 bodyweight hip hinges.' },
+            { id: 'ts-squat', pat: 'legs', n: 'Bodyweight squat', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'Nothing in your hands, arms out in front as a counterweight. Full depth, 3 seconds down, pause at the bottom. Slowed down like that, bodyweight is plenty for two weeks.' },
+            { id: 'ts-split', pat: 'legs', n: 'Split squat, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Rear foot on the floor rather than a bench, so you don’t need a hand for balance. Hands on your hips, controlled.' },
+            { id: 'ts-bridge', pat: 'hinge', n: 'Single-leg glute bridge', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back, one foot planted, the other knee hugged toward your chest. Drive through the heel and squeeze at the top. Arms resting palms up, so no forearm is pressed into the mat.' },
+            { id: 'ts-deadbug', pat: 'core', n: 'Dead bug, arms up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back with both arms pointing straight at the ceiling the whole time, so nothing touches the floor. Lower one leg at a time, lower back flat.' },
+            { id: 'ts-hollow', pat: 'core', n: 'Hollow hold', type: 'hold', sets: 3, lo: 20, hi: 30, how: 'On your back, arms overhead and clear of the floor, legs straight and low, lower back pressed down. The core work you normally get from planks, without a forearm on the ground.' },
+            { id: 'ts-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold.' },
+        ],
+    },
+    TC: {
+        id: 'TC', name: 'Cardio and legs', focus: 'Sweat back on, hands still out of it', color: 'var(--sage)', mins: 40, noStraps: true,
+        note: 'From day 11, once the skin has closed over. Sweat is fine now, so rinse gently afterwards. Your hands stay empty until the piece has stopped flaking.',
+        ex: [
+            { id: 'tc-intervals', pat: 'cardio', n: 'Intervals', type: 'time', target: 22, how: 'Bike or incline walk, hands resting rather than gripping. No rower, it’s a grip exercise. 8–10 rounds of 1 minute hard and 1 minute easy, building back up rather than starting where you left off.' },
+            { id: 'tc-stepup', pat: 'legs', n: 'Step-up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Knee-height box, no weight, no hand on anything. Drive through the top foot and lower slowly.' },
+            { id: 'tc-rdl', pat: 'hinge', n: 'Single-leg RDL, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Hands on your hips. Hinge back with a flat back until you feel the hamstring, 3 seconds down. The balance is the point.' },
+            { id: 'tc-hollow', pat: 'core', n: 'Hollow rock', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'From the hollow hold position, arms overhead and off the floor, rocking from your shoulders rather than your hips.' },
+            { id: 'tc-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches with your hands on your knees, active high-step holds and the kneeling hip flexor stretch.' },
+        ],
+    },
+    FREE: {
+        id: 'FREE', name: 'Something else', focus: 'Anything that isn’t one of your sessions', color: 'var(--plum)', mins: 45, freeform: true,
+        note: 'Add what you actually did. Whatever you log counts toward your week and your training load, and the app reads the movements so tomorrow’s suggestion knows what you’ve already covered.',
+        ex: [],
+    },
     R1: {
-        id: 'R1', name: 'Easy climbing', focus: 'Big holds, open hand, finger taped', color: 'var(--gold)', mins: 60,
+        id: 'R1', main: 'grip', name: 'Easy climbing', focus: 'Big holds, open hand, finger taped', color: 'var(--gold)', mins: 60,
+        express: ['rc-warm', 'rc-volume'], expressMins: 32,
         ex: [
             { id: 'rc-warm', n: 'Warm-up', type: 'check', how: '5 min easy cardio, then 10 scap settings, 15 band external rotations per arm and 10 tendon glides.' },
-            { id: 'rc-volume', n: 'Easy volume on jugs', type: 'time', target: 25, how: 'Open hand, injured finger taped, easy grades only. Stop if finger pain goes above 2/10 or is still there the next morning.' },
-            { id: 'rc-feet', n: 'Silent feet drill', type: 'check', how: '10 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
+            { id: 'rc-volume', pat: ['grip', 'pull'], n: 'Easy volume on jugs', type: 'time', target: 25, how: 'Open hand, injured finger taped, easy grades only. Stop if finger pain goes above 2/10 or is still there the next morning.' },
+            { id: 'rc-feet', pat: 'skill', n: 'Silent feet drill', type: 'check', how: '10 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
         ],
     },
     P1: {
-        id: 'P1', name: 'Power endurance', focus: 'Circuits and core', color: 'var(--teal)', mins: 75,
+        id: 'P1', main: 'grip', name: 'Power endurance', focus: 'Circuits and core', color: 'var(--teal)', mins: 75,
+        express: ['p1-warm', 'p1-4x4', 'p1-wheel', 'p1-sideplank'], expressMins: 35,
         ex: [
             { id: 'p1-warm', n: 'Warm-up', type: 'check', how: '15 min of easy climbing, plus 10 scap settings and 15 band external rotations per arm.' },
-            { id: 'p1-4x4', n: '4 × 4 circuit', type: 'check', how: 'Four problems a few grades below your limit, back to back with no rest, then 4 minutes off. Four rounds. No boards until you’ve had 4+ weeks of pain-free full climbing.' },
-            { id: 'p1-traverse', n: 'Linked traverse', type: 'check', how: '3 × 3–4 minutes of continuous climbing. Keep moving, no resting on jugs.' },
-            { id: 'p1-deadbug', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
-            { id: 'p1-wheel', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'p1-backext', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down, squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hold a 5 kg plate at your chest.' },
-            { id: 'p1-sideplank', n: 'Side plank', type: 'hold', sets: 3, lo: 20, hi: 40, side: true, how: 'On your forearm with feet stacked. Keep your hips high in a straight line.' },
+            { id: 'p1-4x4', pat: ['grip', 'pull'], n: '4 × 4 circuit', type: 'check', how: 'Four problems a few grades below your limit, back to back with no rest, then 4 minutes off. Four rounds. No boards until you’ve had 4+ weeks of pain-free full climbing.' },
+            { id: 'p1-traverse', pat: ['grip', 'pull'], n: 'Linked traverse', type: 'check', how: '3 × 3–4 minutes of continuous climbing. Keep moving, no resting on jugs.' },
+            { id: 'p1-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'p1-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'p1-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down, squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hold a 5 kg plate at your chest.' },
+            { id: 'p1-sideplank', pat: 'core', n: 'Side plank', type: 'hold', sets: 3, lo: 20, hi: 40, side: true, how: 'On your forearm with feet stacked. Keep your hips high in a straight line.' },
             { id: 'p1-wristext', n: 'Band wrist extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Forearm on your thigh, palm down, band under your foot. Lift the back of your hand slowly.' },
         ],
     },
     P2: {
-        id: 'P2', name: 'Grip positions', focus: 'Staged full crimp and three-finger drag', color: 'var(--rust)', mins: 50,
+        id: 'P2', main: 'grip', name: 'Grip positions', focus: 'Staged full crimp and three-finger drag', color: 'var(--rust)', mins: 50,
+        express: ['p2-warm', 'p2-crimp', 'p2-3fd'], expressMins: 30,
         ex: [
             { id: 'p2-warm', n: 'Finger warm-up', type: 'check', how: 'Easy climbing on big holds, then progressively smaller edges over 15 minutes.' },
-            { id: 'p2-crimp', n: 'Full crimp hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Only on fingers your physio has cleared. Follow your current stage in More, under Grip and toe hooks. Let go fully between reps.' },
-            { id: 'p2-3fd', n: 'Three-finger drag hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Current stage only. Stop at any ring finger or forearm pain.' },
-            { id: 'p2-repeaters', n: 'Open-hand repeaters', type: 'check', how: 'Half crimp or open hand on an 18–20 mm edge. 7 s on, 53 s off, 5 reps, 3 sets. Bodyweight, sub-maximal.' },
-            { id: 'p2-tindeq', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand.' },
+            { id: 'p2-crimp', pat: 'grip', n: 'Full crimp hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Only on fingers your physio has cleared. Follow your current stage in More, under Grip and toe hooks. Let go fully between reps.' },
+            { id: 'p2-3fd', pat: 'grip', n: 'Three-finger drag hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Current stage only. Stop at any ring finger or forearm pain.' },
+            { id: 'p2-repeaters', pat: 'grip', n: 'Open-hand repeaters', type: 'check', how: 'Half crimp or open hand on an 18–20 mm edge. 7 s on, 53 s off, 5 reps, 3 sets. Bodyweight, sub-maximal.' },
+            { id: 'p2-tindeq', pat: 'grip', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand.' },
             { id: 'p2-fingerext', n: 'Band finger extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Band around all five fingertips. Open your hand against it slowly.' },
         ],
     },
     P3: {
-        id: 'P3', name: 'Technique and strength', focus: 'Footwork, moderate problems, legs', color: 'var(--blue)', mins: 70,
+        id: 'P3', main: 'grip', name: 'Technique and strength', focus: 'Footwork, moderate problems, legs', color: 'var(--blue)', mins: 70,
+        express: ['p3-feet', 'p3-moderate', 'p3-rdl'], expressMins: 35,
         ex: [
-            { id: 'p3-feet', n: 'Silent feet drill', type: 'check', how: '15 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
-            { id: 'p3-tension', n: 'Steep body tension problems', type: 'check', how: '3–4 problems on steep terrain. Think hips and core, not pulling.' },
-            { id: 'p3-moderate', n: 'Moderate problems', type: 'check', how: '5–6 new problems a few grades below your max. Read each one first, then climb it.' },
-            { id: 'p3-toehook', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold. At stage 2, add a slow reach with the opposite arm while holding.' },
-            { id: 'p3-pallof', n: 'Pallof press', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, harder: 'stand further from the anchor', how: 'Band anchored at chest height, stand side-on. Press straight out and hold 2 seconds, resisting the pull to rotate.' },
-            { id: 'p3-hanghc', n: 'Dead hang with hamstring curl', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, how: 'Hang from a bar and slowly curl one knee toward your glute, then switch. Core stays tight.' },
-            { id: 'p3-rdl', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand. Hinge back with a flat back, 3 seconds down.' },
-            { id: 'p3-hamcurl', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Machine if available, otherwise an ankle weight lying face down. Slow on the way down.' },
-            { id: 'p3-mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches, active high-step holds and the hip flexor stretch.' },
+            { id: 'p3-feet', pat: 'skill', n: 'Silent feet drill', type: 'check', how: '15 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
+            { id: 'p3-tension', pat: ['grip', 'core'], n: 'Steep body tension problems', type: 'check', how: '3–4 problems on steep terrain. Think hips and core, not pulling.' },
+            { id: 'p3-moderate', pat: ['grip', 'pull'], n: 'Moderate problems', type: 'check', how: '5–6 new problems a few grades below your max. Read each one first, then climb it.' },
+            { id: 'p3-toehook', pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold. At stage 2, add a slow reach with the opposite arm while holding.' },
+            { id: 'p3-pallof', pat: 'core', n: 'Pallof press', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, harder: 'stand further from the anchor', how: 'Band anchored at chest height, stand side-on. Press straight out and hold 2 seconds, resisting the pull to rotate.' },
+            { id: 'p3-hanghc', pat: ['pull', 'core'], n: 'Dead hang with hamstring curl', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, how: 'Hang from a bar and slowly curl one knee toward your glute, then switch. Core stays tight.' },
+            { id: 'p3-rdl', pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand. Hinge back with a flat back, 3 seconds down.' },
+            { id: 'p3-hamcurl', pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Machine if available, otherwise an ankle weight lying face down. Slow on the way down.' },
+            { id: 'p3-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches, active high-step holds and the hip flexor stretch.' },
         ],
     },
     P4: {
-        id: 'P4', name: 'Outdoor or fun', focus: 'Climb outside, or climb what you enjoy', color: 'var(--sage)', mins: 120,
+        id: 'P4', main: 'grip', name: 'Outdoor or fun', focus: 'Climb outside, or climb what you enjoy', color: 'var(--sage)', mins: 120,
         ex: [
-            { id: 'p4-out', n: 'Climbing session', type: 'check', how: 'Warm up for 45–60 minutes on easier problems, then project. Stop when your skin or fingers fade, not before.' },
+            { id: 'p4-out', pat: ['grip', 'pull'], n: 'Climbing session', type: 'check', how: 'Warm up for 45–60 minutes on easier problems, then project. Stop when your skin or fingers fade, not before.' },
         ],
     },
 };
@@ -810,18 +983,19 @@ Object.keys(TEMPLATES).forEach((k) => TEMPLATES[k].ex.forEach((ex) => { if (!EX_
 function templateAllowed(tid, mode) {
     return OPTIONAL_SESSIONS.indexOf(tid) >= 0 || (MODES[mode] && MODES[mode].templates.indexOf(tid) >= 0);
 }
-/* ---------- Daily essentials: a ~10 minute core, plus optional extras ---------- */
+/* ---------- Daily essentials: about 12 minutes, or the four marked key when the day is short ---------- */
+const DAILY_SHORT_MINS = 6;
 const DAILY_CORE = [
-    { id: 'd-glides', n: 'Tendon glides', d: 'Straight hand, hook fist, full fist, straight fist, flat hand. 10 slow rounds. Keeps the injured finger moving without loading it.' },
+    { id: 'd-glides', key: true, n: 'Tendon glides', d: 'Straight hand, hook fist, full fist, straight fist, flat hand. 10 slow rounds. Keeps the injured finger moving without loading it.' },
     { id: 'd-chin', n: 'Chin tucks', d: '10 × 2 seconds. Chin straight back, not down.' },
-    { id: 'd-ext', n: 'Extensor band work', d: 'Wrist extension 2 × 15 each side, then finger extension against the band 2 × 15.' },
-    { id: 'd-roll', n: 'Forearm rolling and stretch', d: '1 minute of rolling on each forearm, then 2 × 45 s flexor stretch per arm: arm straight, palm up, gently ease your fingers back.' },
+    { id: 'd-ext', key: true, skipInk: ['forearm'], n: 'Extensor band work', d: 'Wrist extension 2 × 15 each side, then finger extension against the band 2 × 15.' },
+    { id: 'd-roll', key: true, skipInk: ['forearm'], n: 'Forearm rolling and stretch', d: '1 minute of rolling on each forearm, then 2 × 45 s flexor stretch per arm: arm straight, palm up, gently ease your fingers back.' },
     { id: 'd-lifts', n: 'Finger lifts', d: 'Hand flat on a table, lift one finger at a time, 10 each. No load.' },
-    { id: 'd-shoulder', n: 'Shoulder: ball and stretch', d: 'Lacrosse ball on the back of the affected shoulder for 60–90 s, then 2 minutes of sleeper or cross-body stretch.' },
+    { id: 'd-shoulder', key: true, skipInk: ['arm'], n: 'Shoulder: ball and stretch', d: 'Lacrosse ball on the back of the affected shoulder for 60–90 s, then 2 minutes of sleeper or cross-body stretch.' },
     { id: 'd-mag', n: 'Magnesium in the evening', d: 'If you take it.' },
 ];
 const DAILY_EXTRAS = [
-    { id: 'x-tape', n: 'Tape the injured finger', d: 'Before setting or any hand-heavy work.' },
+    { id: 'x-tape', skipInk: ['forearm'], n: 'Tape the injured finger', d: 'Before setting or any hand-heavy work.' },
     { id: 'x-neck', n: 'Neck stretch', d: 'Only if your neck feels tight. 2 × 30 s each side, gentle.' },
     { id: 'x-collagen', n: 'Collagen with vitamin C', d: '15 g with about 50 mg vitamin C, 30–60 minutes before tendon-loading work, such as finger rehab.' },
 ];
@@ -1008,8 +1182,26 @@ const NUTRITION_SWAPS = [
 const DEFAULT_SETTINGS = {
     mode: 'layoff', settingDays: [2, 4], weeklyTarget: 3, defaultUnit: 'kg', exUnits: {},
     assessment: 'todo', assessmentSnooze: null, reminderDays: [1, 3, 6], reminderTime: '18:00',
+    rehabReminderDays: [1, 3, 5], rehabReminderTime: '17:30', dailyReminderTime: '20:00', dailyReminderOn: true,
+    express: false, dailyShort: false, sound: true,
+    tattooStart: null, tattooDays: TATTOO_DEFAULT_DAYS, tattooArea: 'other', modeBefore: null,
     lastBackup: null, dailyHidden: [],
 };
+/* ---------- Short versions: the same session, trimmed to what matters most ---------- */
+function sessionEx(tpl, express) {
+    if (!express || !tpl.express)
+        return tpl.ex;
+    const keep = tpl.ex.filter((e) => tpl.express.indexOf(e.id) >= 0);
+    return keep.length ? keep : tpl.ex;
+}
+function sessionMins(tpl, express) { return express && tpl.express ? tpl.expressMins || tpl.mins : tpl.mins; }
+function dailyList(items, short, ink) {
+    // Anything that rubs, presses or works the healing skin drops off the list while it heals.
+    const safe = ink ? items.filter((i) => !i.skipInk || i.skipInk.indexOf(ink) < 0) : items;
+    const k = safe.filter((i) => i.key);
+    return short && k.length ? k : safe;
+}
+function dailyHiddenByInk(items, ink) { return ink ? items.filter((i) => i.skipInk && i.skipInk.indexOf(ink) >= 0) : []; }
 const isFinished = (s) => !!(s.finishedAt || s.legacy);
 function isHard(s) { const r = Number(s.rpe) || 0; return r >= 8 || (r >= 7 && (Number(s.durationMin) || 0) >= 120); }
 function isRehab(s) { return REHAB_IDS.indexOf(s.templateId) >= 0; }
@@ -1068,6 +1260,50 @@ function settingStatus(ds, sessions, settings, plans) {
     return scheduled ? 'scheduled' : 'none';
 }
 const CLIMBING_TEMPLATES = ['CLIMB', 'R1', 'P1', 'P2', 'P3', 'P4'];
+function exOf(entry) { return (entry && entry.ex) || EX_BY_NAME[(entry || {}).name] || null; }
+const patsOf = (ex) => (!ex || !ex.pat ? [] : Array.isArray(ex.pat) ? ex.pat : [ex.pat]);
+/* ---------- What a session actually trained ----------
+   Logged exercises come first, so a freeform session counts for exactly what you put in it.
+   A session logged without detail falls back to what its template would have been. */
+function sessionPatterns(s) {
+    const done = (s.exercises || []).filter((e) => e.done || (e.sets || []).some((st) => st.done));
+    const list = done.length ? done.map(exOf).filter(Boolean)
+        : ((TEMPLATES[s.templateId] || {}).ex || []);
+    const out = {};
+    list.forEach((ex, i) => {
+        const sets = done.length
+            ? Math.max(1, (done[i] && (done[i].sets || []).filter((st) => st.done).length) || 1)
+            : (ex.sets || 1);
+        patsOf(ex).forEach((p) => { out[p] = (out[p] || 0) + sets; });
+    });
+    return out;
+}
+/* Per pattern: when it was last trained, how many sets in the window, and when it was last
+   trained properly. A couple of token sets doesn't make a pattern "covered"; a hard session
+   or six-plus sets does. */
+const STRONG_SETS = 6;
+function patternHistory(sessions, ds, days) {
+    const out = {};
+    trainSessions(sessions).concat(sessions.filter((x) => x.kind === 'train' && isFinished(x) && isRehab(x)))
+        .filter((x) => x.date <= ds && daysBetween(x.date, ds) <= (days || 7))
+        .forEach((x) => {
+        const gap = daysBetween(x.date, ds);
+        const pats = sessionPatterns(x);
+        Object.keys(pats).forEach((pat) => {
+            const e = out[pat] || (out[pat] = { sets: 0, lastGap: 99, strongGap: 99, from: null, strongFrom: null });
+            e.sets += pats[pat];
+            if (gap < e.lastGap) {
+                e.lastGap = gap;
+                e.from = x;
+            }
+            if ((isHard(x) || pats[pat] >= STRONG_SETS) && gap < e.strongGap) {
+                e.strongGap = gap;
+                e.strongFrom = x;
+            }
+        });
+    });
+    return out;
+}
 /* ---------- Rotation ---------- */
 function pickRotation(sessions, mode, ds, avoid) {
     const allowed = MODES[mode].templates.filter((id) => (avoid || []).indexOf(id) < 0);
@@ -1112,12 +1348,43 @@ function computeACWR(sessions, ds) {
     const ratio = acute / chronic;
     return { ready: true, ratio, acute, chronic, flag: ratio > 1.5 ? 'spike' : ratio < 0.8 ? 'low' : 'ok' };
 }
+/* ---------- Tattoo recovery: which day you're on, and what that day allows ---------- */
+function tattooState(settings, ds) {
+    if (settings.mode !== 'tattoo' || !settings.tattooStart)
+        return null;
+    const day = daysBetween(settings.tattooStart, ds) + 1;
+    const total = Number(settings.tattooDays) || TATTOO_DEFAULT_DAYS;
+    const phase = TATTOO_PHASES.find((p) => day >= p.from && day <= p.to) || TATTOO_PHASES[TATTOO_PHASES.length - 1];
+    const area = settings.tattooArea || 'other';
+    const onForearm = area === 'forearm';
+    const onArm = area === 'arm';
+    const placement = (TATTOO_PLACEMENTS.find((x) => x.value === area) || TATTOO_PLACEMENTS[2]).label;
+    return {
+        day, total, phase, area, placement, onForearm, onArm, over: day > total, early: day < 1,
+        avoid: TATTOO_AVOID[area] || TATTOO_AVOID.other,
+        // Forearm ink and gripping are the same piece of skin, so rehab waits out the whole block.
+        // Upper-arm ink only conflicts while a full hang still stretches it.
+        rehabPaused: onForearm ? day <= total : onArm ? day <= 10 : false,
+        rehabBackOn: onForearm ? total + 1 : 11,
+    };
+}
 /* ---------- Today's recommendation ---------- */
 function getRecommendation({ sessions, checkins, settings, plans, ds }) {
     const dayType = dayTypeFor(ds, settings, plans);
     const mode = MODES[settings.mode] ? settings.mode : 'layoff';
     const reasons = [];
     const notes = [];
+    const tattoo = tattooState(settings, ds);
+    if (tattoo && !tattoo.over && !tattoo.early) {
+        // The phase decides, not the rotation: this mode is already as easy as it gets.
+        const pick = pickRotation(sessions, mode, ds, MODES[mode].templates.filter((t) => tattoo.phase.pick.indexOf(t) < 0));
+        const fp = checkins[ds] && !checkins[ds].skipped && typeof checkins[ds].finger === 'number' ? checkins[ds].finger : null;
+        return {
+            dayType, mode, templateId: pick, yStatus: settingStatus(addDays(ds, -1), sessions, settings, plans),
+            reasons, notes, fingerPain: fp, fingerAlert: fp !== null && fp >= 4, gap: null,
+            acwr: { ready: false }, tattoo,
+        };
+    }
     const ci = checkins[ds] && !checkins[ds].skipped ? checkins[ds] : null;
     const y = addDays(ds, -1);
     const yMaxRpe = trainSessions(sessions).filter((s) => s.date === y).reduce((m, s) => Math.max(m, Number(s.rpe) || 0), 0);
@@ -1125,7 +1392,7 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
     const hardDays3 = [1, 2, 3].filter((i) => trainSessions(sessions).some((s) => s.date === addDays(ds, -i) && isHard(s))).length;
     const yStatus = settingStatus(y, sessions, settings, plans);
     const yRest = !trainSessions(sessions).some((s) => s.date === y) && (yStatus === 'none' || yStatus === 'skipped');
-    const recentHardClimb = trainSessions(sessions).some((s) => { const g = daysBetween(s.date, ds); return g >= 1 && g <= 3 && isHard(s) && CLIMBING_TEMPLATES.indexOf(s.templateId) >= 0; });
+    const hist = patternHistory(sessions, ds, 7);
     const lastTrain = trainSessions(sessions).filter((s) => s.date < ds).sort(byDateDesc)[0];
     const gap = lastTrain ? daysBetween(lastTrain.date, ds) : null;
     const acwr = computeACWR(sessions, ds);
@@ -1160,14 +1427,27 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
         notes.push(gap + ' days since your last session. Ease back in: a full warm-up and about 70% effort today.');
     else if (gap !== null && gap >= 3)
         notes.push(gap + ' days since your last session. Just pick up from here, no catching up.');
-    const avoid = recentHardClimb && (mode === 'layoff' || mode === 'return') ? ['B'] : [];
+    // Anything whose main job was covered in the last two days waits a day, whether that came
+    // from a session in the plan or from something you logged yourself.
+    const covered = (tid) => {
+        const d = (TEMPLATES[tid] || {}).main;
+        const h = d && hist[d];
+        return h && h.strongGap >= 1 && h.strongGap <= 2 ? d : null;
+    };
+    const avoid = MODES[mode].templates.filter((tid) => covered(tid));
     const basePick = pickRotation(sessions, mode, ds);
     const pick = recovery ? 'REC' : pickRotation(sessions, mode, ds, avoid);
     if (!recovery && dayType === 'train') {
         if (hardDays3 >= 2 && yRest)
             notes.push('You rested yesterday after ' + hardDays3 + ' hard sessions, so a normal session is fine.');
-        if (basePick === 'B' && pick !== 'B')
-            notes.push('Session B is mostly pulling, and your recent climbing already covered that, so it moves to next time.');
+        if (basePick !== pick && covered(basePick)) {
+            const d = covered(basePick);
+            const src = hist[d].strongFrom || hist[d].from;
+            const cause = CLIMBING_TEMPLATES.indexOf(src.templateId) >= 0 ? 'your recent climbing'
+                : src.templateId === 'FREE' ? 'what you logged ' + (hist[d].lastGap === 1 ? 'yesterday' : 'on ' + fmtDate(src.date, { weekday: 'long' }))
+                    : src.label + (hist[d].lastGap === 1 ? ' yesterday' : ' on ' + fmtDate(src.date, { weekday: 'long' }));
+            notes.push(TEMPLATES[basePick].name + ' is mostly ' + PATTERNS[d].label + ', and ' + cause + ' already covered that, so it moves to next time.');
+        }
         if (yStatus === 'logged')
             notes.push('You set yesterday. If you feel beaten up, switch to Recovery.');
         const why = [];
@@ -1180,7 +1460,7 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
     }
     return {
         dayType, mode, templateId: pick, yStatus,
-        reasons, notes, fingerPain, fingerAlert: fingerPain !== null && fingerPain >= 4, gap, acwr,
+        reasons, notes, fingerPain, fingerAlert: fingerPain !== null && fingerPain >= 4, gap, acwr, tattoo,
     };
 }
 /* ---------- Weekly consistency (setting days never break anything) ---------- */
@@ -1206,12 +1486,14 @@ function blankSets(ex) {
         return [{}];
     return Array.from({ length: ex.sets || 1 }, () => ({}));
 }
-function newSession(tid, ds, mode) {
+function newSession(tid, ds, mode, express) {
     const t = TEMPLATES[tid];
+    const list = t.freeform ? [] : sessionEx(t, express && !t.rehab); // rehab is a prescription, never trimmed
     return {
         id: uid('s'), date: ds, kind: 'train', templateId: tid, label: t.name, focus: t.focus, mode,
+        short: list.length < t.ex.length || undefined,
         startedAt: nowIso(), createdAt: nowIso(), finishedAt: null, rpe: null, durationMin: null,
-        exercises: t.ex.map((ex) => ({ id: ex.id, name: ex.n, done: false, sets: blankSets(ex) })),
+        exercises: list.map((ex) => ({ id: ex.id, name: ex.n, done: false, sets: blankSets(ex) })),
     };
 }
 function hasData(st) { return st && st.done && ['w', 'r', 's', 'm', 'v'].some((k) => st[k] !== undefined && st[k] !== '' && st[k] !== null); }
@@ -1352,6 +1634,27 @@ function placeholders(ex, last, sug, unit, n) {
     }
     return out;
 }
+// Within a session, each finished set becomes the next set's placeholder, so repeating it is one tap.
+function carryForward(ex, entry, ph, unit) {
+    (entry.sets || []).forEach((st, j) => {
+        const prev = j > 0 ? entry.sets[j - 1] : null;
+        if (!prev || !prev.done)
+            return;
+        const p = { ...ph[j] };
+        ['r', 's', 'm', 'v'].forEach((k) => { if (prev[k] !== undefined && prev[k] !== '' && prev[k] !== null) {
+            p[k] = Number(prev[k]);
+            p[k + 'Text'] = String(prev[k]);
+        } });
+        if (ex.type === 'weight' && prev.w !== undefined && prev.w !== '' && prev.w !== null) {
+            const kg = toKg(Number(prev.w), prev.u || unit);
+            const w = (prev.u || unit) === unit ? Number(prev.w) : (ex.rehab ? exactLoad(kg, unit) : roundLoad(fromKg(kg, unit), unit));
+            p.w = w;
+            p.wText = fmtNum(w);
+        }
+        ph[j] = p;
+    });
+    return ph;
+}
 function resolveSet(ex, st, ph, unit) {
     const val = (x) => (x === undefined || x === null || x === '' ? null : String(x));
     const pick = (k) => val(st[k]) || (ph && ph[k] != null ? String(ph[k]) : null);
@@ -1431,7 +1734,7 @@ function allBests(sessions) {
     const out = {};
     sessions.filter((s) => s.kind === 'train' && isFinished(s)).forEach((s) => {
         (s.exercises || []).forEach((e) => {
-            const ex = EX_BY_NAME[e.name];
+            const ex = exOf(e);
             if (!ex)
                 return;
             const b = bestInEntry(ex, e);
@@ -1445,7 +1748,7 @@ function findNewBests(sessions, session) {
     const before = allBests(sessions.filter((s) => s.id !== session.id));
     const found = [];
     (session.exercises || []).forEach((e) => {
-        const ex = EX_BY_NAME[e.name];
+        const ex = exOf(e);
         if (!ex)
             return;
         const b = bestInEntry(ex, e);
@@ -1487,7 +1790,7 @@ function rehabDetail(s) {
     if (s.durationMin)
         parts.push(s.durationMin + ' min');
     (s.exercises || []).forEach((e) => {
-        const ex = EX_BY_NAME[e.name];
+        const ex = exOf(e);
         if (!ex || ex.type !== 'weight')
             return;
         const ws = (e.sets || []).filter((st) => st.done && st.w !== '' && st.w != null);
@@ -1504,6 +1807,11 @@ function buildStatus(ctx) {
     L.push('My current training status, from my training app (' + fmtLong(today) + '):');
     L.push('');
     L.push('Mode: ' + MODES[settings.mode].name + '. ' + MODES[settings.mode].desc);
+    const ts = tattooState(settings, today);
+    if (ts)
+        L.push('Tattoo recovery: day ' + ts.day + ' of ' + ts.total + ', ' + ts.placement.toLowerCase() + (ts.rehabPaused ? ', physio rehab paused until day ' + ts.rehabBackOn : '') + '. No gripping, hanging, chalk or weight held in the hands. Back to ' + (MODES[settings.modeBefore] ? MODES[settings.modeBefore].name.toLowerCase() : 'normal training') + ' afterwards.');
+    if (settings.express)
+        L.push('Short versions are switched on, so sessions are trimmed to their main lifts.');
     L.push('Routesetting days: ' + ((settings.settingDays || []).map((d) => DOW_SHORT[d]).join(', ') || 'none'));
     L.push('This week: ' + weekCount(sessions, today) + ' of my ' + settings.weeklyTarget + '-session target');
     L.push('Physio rehab this week (aim ' + REHAB_TARGET.text + ' each): ' + REHAB_IDS.map((tid) => TEMPLATES[tid].name.toLowerCase() + ' ' + rehabWeekCount(sessions, tid, today)).join(', '));
@@ -1553,8 +1861,13 @@ function buildStatus(ctx) {
     L.push('My question: ');
     return L.join('\n');
 }
-/* ---------- Weekly calendar reminders (set once, repeats forever) ---------- */
-function buildICS(days, time) {
+/* ---------- Repeating calendar reminders (set once, repeat forever) ----------
+   A page served from a static host has no server to push from, so the reminders are
+   calendar events with alarms. They fire whether or not the app is open. */
+const DOW_ICS = ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'];
+function icsEvent(key, summary, desc, days, time, lead) {
+    if (!days || !days.length)
+        return [];
     const hm = String(time || '18:00').split(':');
     const today = localDate();
     let start = today;
@@ -1566,16 +1879,32 @@ function buildICS(days, time) {
         }
     }
     const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
-    const byday = days.slice().sort().map((d) => ['SU', 'MO', 'TU', 'WE', 'TH', 'FR', 'SA'][d]).join(',');
+    const byday = days.slice().sort().map((d) => DOW_ICS[d]).join(',');
     return [
-        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Training Companion//EN', 'CALSCALE:GREGORIAN', 'BEGIN:VEVENT',
-        'UID:tc-weekly-' + Date.now() + '@training-companion', 'DTSTAMP:' + stamp,
+        'BEGIN:VEVENT',
+        'UID:tc-' + key + '-' + Date.now() + '@training-companion', 'DTSTAMP:' + stamp,
         'DTSTART:' + start.replace(/-/g, '') + 'T' + pad2(Number(hm[0]) || 18) + pad2(Number(hm[1]) || 0) + '00',
-        'DURATION:PT1H', 'RRULE:FREQ=WEEKLY;BYDAY=' + byday, 'SUMMARY:Training session',
-        'DESCRIPTION:Open Training Companion for today\'s session.',
-        'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Training in 15 minutes', 'TRIGGER:-PT15M', 'END:VALARM',
-        'END:VEVENT', 'END:VCALENDAR',
-    ].join('\r\n');
+        'DURATION:PT' + (lead ? '1H' : '20M'), 'RRULE:FREQ=WEEKLY;BYDAY=' + byday,
+        'SUMMARY:' + summary, 'DESCRIPTION:' + desc,
+        'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:' + summary,
+        'TRIGGER:' + (lead ? '-PT15M' : '-PT0M'), 'END:VALARM',
+        'END:VEVENT',
+    ];
+}
+const ALL_DAYS = [0, 1, 2, 3, 4, 5, 6];
+function buildICS(days, time, settings) {
+    const st = settings || {};
+    let events = icsEvent('train', 'Training session', 'Open Training for today’s session.', days, time, true);
+    if (settings) {
+        if (st.dailyReminderOn !== false) {
+            events = events.concat(icsEvent('daily', 'Daily checklist', 'Tendon glides, extensor band, forearms, shoulder. Six minutes if you’re short on time.', ALL_DAYS, st.dailyReminderTime, false));
+        }
+        events = events.concat(icsEvent('rehab', 'Physio rehab', 'Finger rehab and shoulder rehab, from your physio.', st.rehabReminderDays, st.rehabReminderTime, false));
+    }
+    if (!events.length)
+        return '';
+    return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Training Companion//EN', 'CALSCALE:GREGORIAN']
+        .concat(events, ['END:VCALENDAR']).join('\r\n');
 }
 /* ---------- Files, clipboard, backup ---------- */
 async function deliverFile(filename, text, mime, preferShare) {
@@ -1630,7 +1959,7 @@ async function copyText(text) {
         }
     }
 }
-const STORE_KEYS = ['sessions', 'checkins', 'daily', 'injuries', 'benchmarks', 'settings', 'plans', 'customDaily', 'physio'];
+const STORE_KEYS = ['sessions', 'checkins', 'daily', 'injuries', 'benchmarks', 'settings', 'plans', 'customDaily', 'customEx', 'physio'];
 function exportData() {
     const data = {};
     STORE_KEYS.forEach((k) => { data[k] = readStore(k, null); });
@@ -1763,26 +2092,9 @@ function SetRow({ ex, st, j, unit, ph, onPatch }) {
         React.createElement("button", { className: "tick", onClick: tick, "aria-label": (st.done ? 'Undo set ' : 'Complete set ') + (j + 1), "aria-pressed": !!st.done },
             React.createElement(IconCheck, { size: 20, sw: 2.6 }))));
 }
-function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPatchSet, onAddSet, onSetUnit }) {
+function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPatchSet, onAddSet, onSetUnit, onGuided, guiding }) {
     const sug = suggestion(ex, last, unit);
-    const ph = placeholders(ex, last, sug, unit, (entry.sets || []).length);
-    // Within a session, each finished set becomes the next set's placeholder, so repeating it is one tap.
-    (entry.sets || []).forEach((st, j) => {
-        const prev = j > 0 ? entry.sets[j - 1] : null;
-        if (!prev || !prev.done)
-            return;
-        const p = { ...ph[j] };
-        ['r', 's', 'm', 'v'].forEach((k) => { if (prev[k] !== undefined && prev[k] !== '' && prev[k] !== null) {
-            p[k] = Number(prev[k]);
-            p[k + 'Text'] = String(prev[k]);
-        } });
-        if (ex.type === 'weight' && prev.w !== undefined && prev.w !== '' && prev.w !== null) {
-            const w = (prev.u || unit) === unit ? Number(prev.w) : roundLoad(fromKg(toKg(Number(prev.w), prev.u), unit), unit);
-            p.w = w;
-            p.wText = fmtNum(w);
-        }
-        ph[j] = p;
-    });
+    const ph = carryForward(ex, entry, placeholders(ex, last, sug, unit, (entry.sets || []).length), unit);
     const setsDone = (entry.sets || []).filter((s) => s.done).length;
     return (React.createElement("div", { className: 'ex' + (entry.done ? ' done' : '') },
         React.createElement("div", { className: "ex-head" },
@@ -1801,11 +2113,183 @@ function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPat
                 React.createElement("div", { className: "seg", role: "group", "aria-label": "Weight unit" },
                     React.createElement("button", { className: unit === 'kg' ? 'on' : '', "aria-pressed": unit === 'kg', onClick: () => onSetUnit('kg') }, "kg"),
                     React.createElement("button", { className: unit === 'lb' ? 'on' : '', "aria-pressed": unit === 'lb', onClick: () => onSetUnit('lb') }, "lb")))) : null,
+            ex.timing && !entry.done ? (() => {
+                // A weighted hold needs a load before a hands-free timer makes any sense:
+                // either a suggested one, or one you've just typed into the next set.
+                const j0 = Math.max(0, (entry.sets || []).findIndex((st) => !st.done));
+                const typed = (entry.sets[j0] || {}).w;
+                const needsLoad = ex.type === 'weight' && !ex.bwOk && (!ph[j0] || ph[j0].w == null)
+                    && (typed === undefined || typed === null || typed === '');
+                return (React.createElement("div", { style: { margin: '8px 0 2px' } },
+                    React.createElement("button", { className: "btn sm primary", disabled: !!guiding || needsLoad, onClick: onGuided, "aria-label": 'Start the timer for ' + ex.n }, "Start timer"),
+                    React.createElement("span", { className: "small", style: { marginLeft: 10 } }, needsLoad ? 'Type your load first' : ex.timing.reps > 1
+                        ? ex.timing.reps + ' × ' + ex.timing.work + ' s, ' + ex.timing.between + ' s between'
+                        : ex.timing.work + ' s')));
+            })() : null,
             (entry.sets || []).map((st, j) => (React.createElement(SetRow, { key: j, ex: ex, st: st, j: j, unit: unit, ph: ph[j] || {}, onPatch: (p) => onPatchSet(j, p) }))),
             ['weight', 'reps', 'hold'].indexOf(ex.type) >= 0 ? React.createElement("button", { className: "link", onClick: onAddSet },
                 React.createElement(IconPlus, { size: 16 }),
                 " Add a set") : null,
             ex.type === 'check' ? React.createElement("button", { className: "btn sm", style: { marginTop: 4 }, onClick: onToggleDone }, entry.done ? 'Mark not done' : 'Done') : null)) : null));
+}
+/* ---------- Guided timer: run a prescribed exercise hands-free ----------
+   Steps are built up front from the physio's numbers, then played from timestamps,
+   so a slow frame or a backgrounded tab can't drift the count. */
+function guidedSteps(ex, fromSet) {
+    const t = ex.timing;
+    const steps = [{ kind: 'ready', secs: 5, label: 'Get ready' }];
+    const sides = (t.sides && t.sides.length ? t.sides : [null]);
+    for (let s = fromSet; s < (ex.sets || 1); s++) {
+        sides.forEach((side, si) => {
+            if (si > 0)
+                steps.push({ kind: 'switch', secs: 10, label: 'Switch to ' + side.toLowerCase(), set: s, side });
+            for (let r = 0; r < t.reps; r++) {
+                steps.push({ kind: 'work', secs: t.work, label: t.cue || 'Hold', set: s, rep: r + 1, side });
+                if (t.between && r < t.reps - 1)
+                    steps.push({ kind: 'between', secs: t.between, label: 'Let go', set: s, rep: r + 1, side });
+            }
+        });
+        steps.push({ kind: 'setdone', secs: 0, set: s });
+        if (s < (ex.sets || 1) - 1 && ex.rest)
+            steps.push({ kind: 'rest', secs: ex.rest, label: 'Rest', set: s });
+    }
+    return steps;
+}
+function useBeeper(on) {
+    const ref = useRef(null);
+    return useCallback((freq, ms) => {
+        if (!on)
+            return;
+        try {
+            const AC = window.AudioContext || window.webkitAudioContext;
+            if (!AC)
+                return;
+            if (!ref.current)
+                ref.current = new AC();
+            const ac = ref.current;
+            if (ac.state === 'suspended' && ac.resume)
+                ac.resume();
+            const o = ac.createOscillator(), g = ac.createGain();
+            o.type = 'sine';
+            o.frequency.value = freq;
+            const t0 = ac.currentTime, dur = ms / 1000;
+            g.gain.setValueAtTime(0.0001, t0);
+            g.gain.exponentialRampToValueAtTime(0.3, t0 + 0.012);
+            g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+            o.connect(g);
+            g.connect(ac.destination);
+            o.start(t0);
+            o.stop(t0 + dur + 0.02);
+        }
+        catch (e) { /* a missing or blocked audio context never stops the timer */ }
+    }, [on]);
+}
+function GuidedRunner({ ex, fromSet, color, sound, onSetDone, onClose, onNext, nextName }) {
+    const steps = useRef(guidedSteps(ex, fromSet)).current;
+    const [i, setI] = useState(0);
+    const [startedAt, setStartedAt] = useState(() => Date.now());
+    const [paused, setPaused] = useState(null); // seconds left when paused
+    const [now, setNow] = useState(() => Date.now());
+    const [done, setDone] = useState(false);
+    const beep = useBeeper(sound !== false);
+    const lastBeep = useRef(-1);
+    const step = steps[i];
+    // Keep the screen awake: a timer you have to keep tapping isn't hands-free.
+    useEffect(() => {
+        let lock = null, cancelled = false;
+        if (navigator.wakeLock && navigator.wakeLock.request) {
+            navigator.wakeLock.request('screen').then((l) => { if (cancelled)
+                l.release();
+            else
+                lock = l; }).catch(() => { });
+        }
+        return () => { cancelled = true; if (lock) {
+            try {
+                lock.release();
+            }
+            catch (e) { /* already gone */ }
+        } };
+    }, []);
+    useEffect(() => { const t = setInterval(() => setNow(Date.now()), 100); return () => clearInterval(t); }, []);
+    const left = paused != null ? paused : step ? Math.max(0, step.secs - (now - startedAt) / 1000) : 0;
+    // Advance, tick off finished sets, and sound each change of phase.
+    useEffect(() => {
+        if (done || !step || paused != null)
+            return;
+        if (step.kind === 'setdone') {
+            onSetDone(step.set);
+            next();
+            return;
+        }
+        if (left > 0.001)
+            return;
+        next();
+        function next() {
+            const k = i + 1;
+            if (k >= steps.length) {
+                setDone(true);
+                beep(880, 120);
+                setTimeout(() => beep(1175, 220), 160);
+                return;
+            }
+            const nx = steps[k];
+            if (nx.kind === 'work')
+                beep(1175, 150);
+            else if (nx.kind === 'rest' || nx.kind === 'switch')
+                beep(520, 180);
+            else if (nx.kind === 'between')
+                beep(660, 90);
+            lastBeep.current = -1;
+            setI(k);
+            setStartedAt(Date.now());
+        }
+        // eslint-disable-next-line
+    }, [now, i, paused, done]);
+    // Three ticks into the end of anything long enough to need a warning.
+    useEffect(() => {
+        if (done || paused != null || !step || step.secs < 5)
+            return;
+        const s = Math.ceil(left);
+        if (s <= 3 && s >= 1 && lastBeep.current !== s) {
+            lastBeep.current = s;
+            beep(step.kind === 'work' ? 740 : 620, 70);
+        }
+        // eslint-disable-next-line
+    }, [now]);
+    const total = (ex.sets || 1);
+    if (done) {
+        return (React.createElement("div", { className: "guided done", style: { '--accent': color } },
+            React.createElement("div", { className: "guided-main" },
+                React.createElement("span", { className: "guided-phase" },
+                    ex.n,
+                    " done"),
+                React.createElement("span", { className: "small", style: { color: 'var(--text)' } }, nextName ? 'Next: ' + nextName : 'That’s the last timed one.')),
+            React.createElement("div", { className: "row", style: { gap: 8 } },
+                nextName ? React.createElement("button", { className: "btn sm primary", onClick: onNext }, "Next") : null,
+                React.createElement("button", { className: "btn sm", onClick: onClose }, "Close"))));
+    }
+    if (!step)
+        return null;
+    const pct = step.secs ? Math.max(0, Math.min(100, (left / step.secs) * 100)) : 0;
+    const working = step.kind === 'work';
+    return (React.createElement("div", { className: 'guided' + (working ? ' work' : ''), style: { '--accent': color }, role: "timer", "aria-label": step.label + ', ' + Math.ceil(left) + ' seconds left' },
+        React.createElement("span", { className: "guided-fill", style: { width: pct + '%' }, "aria-hidden": "true" }),
+        React.createElement("div", { className: "guided-main" },
+            React.createElement("span", { className: "guided-phase" },
+                step.label,
+                step.side && step.kind === 'work' ? ' · ' + step.side.toLowerCase() : ''),
+            React.createElement("span", { className: "small", style: { color: 'var(--text)' } }, step.kind === 'ready' ? ex.n : 'Set ' + ((step.set || 0) + 1) + ' of ' + total + (step.rep ? ' · rep ' + step.rep + ' of ' + ex.timing.reps : ''))),
+        React.createElement("span", { className: "guided-count num" }, Math.ceil(left)),
+        React.createElement("div", { className: "row", style: { gap: 6 } },
+            React.createElement("button", { className: "btn sm", "aria-label": paused != null ? 'Resume' : 'Pause', onClick: () => {
+                    if (paused != null) {
+                        setStartedAt(Date.now() - (step.secs - paused) * 1000);
+                        setPaused(null);
+                    }
+                    else
+                        setPaused(left);
+                } }, paused != null ? 'Resume' : 'Pause'),
+            React.createElement("button", { className: "btn sm ghost", onClick: onClose }, "Stop"))));
 }
 // Counts down the rest a physio prescribed between sets. Works from a timestamp, so it stays right after the phone locks.
 function RestBar({ rest, color, onClose }) {
@@ -1829,14 +2313,69 @@ function RestBar({ rest, color, onClose }) {
             over ? React.createElement("span", { className: "small", style: { color: 'var(--text)' } }, ", next set") : null),
         React.createElement("button", { className: "btn sm", onClick: onClose }, over ? 'OK' : 'Skip rest')));
 }
+/* ---------- Adding an exercise that isn't in the plan ---------- */
+const MEASURE_DEFAULTS = {
+    weight: { lo: 6, hi: 12 }, reps: { lo: 8, hi: 15 }, hold: { lo: 15, hi: 45 }, time: { target: 20 },
+};
+function makeCustomEx(d) {
+    const base = MEASURE_DEFAULTS[d.type] || MEASURE_DEFAULTS.reps;
+    const sets = d.type === 'time' ? 1 : Math.max(1, Number(d.sets) || 3);
+    return {
+        id: uid('cx'), n: d.n, type: d.type, custom: true, pat: d.pat || null, sets: sets,
+        dose: d.type === 'time' ? 'However long it took' : sets + (sets === 1 ? ' set' : ' sets'),
+        short: d.type === 'time' ? 'minutes' : sets + ' × ',
+        how: 'Added by you.' + (d.pat ? ' Counted as ' + PATTERNS[d.pat].label + ' when the app works out what you’ve already covered.' : ''),
+        ...base,
+    };
+}
+function AddExerciseSheet({ library, onAdd, onClose }) {
+    const [name, setName] = useState('');
+    const [type, setType] = useState('reps');
+    const [sets, setSets] = useState(3);
+    const [pat, setPat] = useState(null);
+    const [edited, setEdited] = useState(false);
+    const guess = guessPattern(name);
+    const chosen = edited ? pat : guess;
+    const fromPlan = Object.keys(EX_BY_NAME).map((n) => ({ n, type: EX_BY_NAME[n].type, sets: EX_BY_NAME[n].sets || 3, pat: EX_BY_NAME[n].pat, plan: true }));
+    const seen = {};
+    const all = library.concat(fromPlan).filter((x) => {
+        const k = x.n.toLowerCase();
+        if (seen[k] || ['check', 'metric'].indexOf(x.type) >= 0)
+            return false;
+        seen[k] = 1;
+        return true;
+    });
+    const q = name.trim().toLowerCase();
+    const matches = (q ? all.filter((x) => x.n.toLowerCase().indexOf(q) >= 0) : library.slice().reverse()).slice(0, 6);
+    const add = (d) => { onAdd(makeCustomEx(d)); onClose(); };
+    return (React.createElement(Sheet, { title: "Add an exercise", onClose: onClose },
+        React.createElement("input", { className: "field text", "aria-label": "Exercise name", placeholder: "What did you do?", value: name, autoFocus: true, onChange: (e) => setName(e.target.value) }),
+        matches.length ? (React.createElement("div", null,
+            React.createElement("div", { className: "label" }, q ? 'Matches' : 'You’ve logged before'),
+            React.createElement("div", { className: "chips" }, matches.map((x) => (React.createElement("button", { key: x.n, className: "chip", onClick: () => add({ n: x.n, type: x.type, sets: x.sets, pat: Array.isArray(x.pat) ? x.pat[0] : x.pat }) }, x.n)))),
+            React.createElement("p", { className: "small", style: { margin: '8px 0 0' } }, "Tap one to add it straight away, with its history and personal bests attached."))) : null,
+        React.createElement("div", { className: "label" }, "How do you want to log it?"),
+        React.createElement(ChipRow, { options: MEASURES, value: type, onChange: (v) => setType(v || type) }),
+        type !== 'time' ? (React.createElement("div", null,
+            React.createElement("div", { className: "label" }, "Sets"),
+            React.createElement(ChipRow, { small: true, options: [1, 2, 3, 4, 5, 6], value: sets, onChange: (v) => setSets(v || sets) }))) : null,
+        React.createElement("div", { className: "label" },
+            "What does it train?",
+            !edited && guess ? ' (worked out from the name)' : ''),
+        React.createElement(ChipRow, { small: true, options: PATTERN_IDS.map((k) => ({ value: k, label: PATTERNS[k].n })), value: chosen, onChange: (v) => { setEdited(true); setPat(v); } }),
+        React.createElement("p", { className: "small", style: { margin: '6px 0 0' } }, "This is what lets the app see what you\u2019ve covered. Leave it blank if none of them fit."),
+        React.createElement("button", { className: "btn primary block", style: { marginTop: 16 }, disabled: !name.trim(), onClick: () => add({ n: name.trim(), type, sets, pat: chosen }) }, "Add it")));
+}
 function ActiveSession({ session, ctx, onFinish, onDiscard }) {
-    const { sessions, setSessions, settings, updateSettings } = ctx;
+    const { sessions, setSessions, settings, updateSettings, customEx, setCustomEx } = ctx;
     const tpl = TEMPLATES[session.templateId] || { ex: [], color: 'var(--teal)', name: session.label };
     // An item from an older version of the plan still shows, as a simple tick, so nothing in a running session vanishes.
-    const findEx = (entry) => tpl.ex.find((x) => x.id === entry.id) || EX_BY_NAME[entry.name] ||
+    const findEx = (entry) => entry.ex || tpl.ex.find((x) => x.id === entry.id) || EX_BY_NAME[entry.name] ||
         { id: entry.id, n: entry.name, type: 'check', how: 'No longer part of the plan. Tick it if you did it.' };
     const [openIdx, setOpenIdx] = useState(() => session.exercises.findIndex((e) => !e.done));
     const [rest, setRest] = useState(null);
+    const [guided, setGuided] = useState(null);
+    const [adding, setAdding] = useState(false);
     const nextUndone = (i) => { for (let k = i + 1; k < session.exercises.length; k++)
         if (!session.exercises[k].done)
             return k; return -1; };
@@ -1844,6 +2383,31 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
     // Your choice for an exercise wins, then the unit it was prescribed in, then your default.
     const unitFor = (ex) => (settings.exUnits && settings.exUnits[ex.n]) || ex.unit || settings.defaultUnit || 'kg';
     const doneN = session.exercises.filter((e) => e.done).length;
+    // The timer logs each set as it finishes, using the same values a tap would have used.
+    const tickSet = (i, j) => {
+        const entry = session.exercises[i];
+        if (!entry)
+            return;
+        const ex = findEx(entry);
+        const unit = unitFor(ex);
+        const last = lastEntryFor(sessions, ex.n, session.id);
+        const ph = carryForward(ex, entry, placeholders(ex, last, suggestion(ex, last, unit), unit, (entry.sets || []).length), unit);
+        const res = resolveSet(ex, entry.sets[j] || {}, ph[j] || {}, unit);
+        patchEntry(i, (e) => {
+            const sets = e.sets.map((st, k) => (k === j ? { ...st, ...res.patch, done: true } : st));
+            return { ...e, sets, done: sets.length > 0 && sets.every((st) => st.done) };
+        });
+    };
+    const startGuided = (i) => {
+        const entry = session.exercises[i];
+        const from = (entry.sets || []).findIndex((st) => !st.done);
+        setRest(null);
+        setOpenIdx(i);
+        setGuided({ i, from: from < 0 ? 0 : from, n: ((guided && guided.n) || 0) + 1 });
+    };
+    const guidedEntry = guided ? session.exercises[guided.i] : null;
+    const guidedEx = guidedEntry ? findEx(guidedEntry) : null;
+    const nextTimed = guided ? session.exercises.findIndex((e, k) => k > guided.i && !e.done && (findEx(e) || {}).timing) : -1;
     return (React.createElement(React.Fragment, null,
         React.createElement("section", { className: "card", style: { '--accent': tpl.color, paddingLeft: 20 } },
             React.createElement("span", { className: "tape", "aria-hidden": "true" }),
@@ -1873,12 +2437,28 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
                             setRest((r) => ({ until: Date.now() + ex.rest * 1000, total: ex.rest, n: ((r && r.n) || 0) + 1 }));
                         else if (completes)
                             setRest(null);
-                    }, onAddSet: () => patchEntry(i, (e) => ({ ...e, sets: [...e.sets, {}], done: false })), onSetUnit: (u) => updateSettings({ exUnits: { ...(settings.exUnits || {}), [ex.n]: u } }) }));
+                    }, onAddSet: () => patchEntry(i, (e) => ({ ...e, sets: [...e.sets, {}], done: false })), onGuided: () => startGuided(i), guiding: !!guided, onSetUnit: (u) => updateSettings({ exUnits: { ...(settings.exUnits || {}), [ex.n]: u } }) }));
             })),
+            tpl.freeform ? (React.createElement("div", { style: { marginTop: session.exercises.length ? 12 : 4 } },
+                !session.exercises.length ? React.createElement("p", { className: "small", style: { margin: '0 0 10px' } }, "Nothing in it yet. Add exercises as you go, or all at the end.") : null,
+                React.createElement("button", { className: "btn block", onClick: () => setAdding(true) },
+                    React.createElement(IconPlus, { size: 18 }),
+                    " Add an exercise"))) : null,
             React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, onClick: onFinish }, "Finish session"),
             React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, onClick: onDiscard }, "Discard this session"),
-            rest ? React.createElement("div", { style: { height: 64 }, "aria-hidden": "true" }) : null),
-        rest ? React.createElement(RestBar, { key: rest.n, rest: rest, color: tpl.color, onClose: () => setRest(null) }) : null));
+            rest || guided ? React.createElement("div", { style: { height: 78 }, "aria-hidden": "true" }) : null,
+            adding ? (React.createElement(AddExerciseSheet, { library: customEx || [], onClose: () => setAdding(false), onAdd: (ex) => {
+                    setSessions((prev) => prev.map((x) => (x.id !== session.id ? x : { ...x, exercises: [...x.exercises, { id: ex.id, name: ex.n, ex: ex, done: false, sets: blankSets(ex) }] })));
+                    setCustomEx((prev) => {
+                        const lib = (prev || []).filter((l) => l.n.toLowerCase() !== ex.n.toLowerCase());
+                        return [...lib, { n: ex.n, type: ex.type, sets: ex.sets, pat: ex.pat }].slice(-40);
+                    });
+                    setOpenIdx(session.exercises.length);
+                } })) : null),
+        guided && guidedEx ? (React.createElement(GuidedRunner, { key: guided.n, ex: guidedEx, fromSet: guided.from, color: tpl.color, sound: settings.sound, nextName: nextTimed >= 0 ? session.exercises[nextTimed].name : null, onSetDone: (j) => tickSet(guided.i, j), onNext: () => { if (nextTimed >= 0)
+                startGuided(nextTimed);
+            else
+                setGuided(null); }, onClose: () => { setGuided(null); setOpenIdx(nextUndone(guided.i - 1)); } })) : rest ? React.createElement(RestBar, { key: rest.n, rest: rest, color: tpl.color, onClose: () => setRest(null) }) : null));
 }
 const PAIN_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 function FinishSheet({ session, onSave, onClose }) {
@@ -1993,6 +2573,53 @@ function AssessmentCard({ ctx }) {
             React.createElement("button", { className: "btn sm", onClick: done }, "I\u2019ve already been"),
             React.createElement("button", { className: "btn ghost sm", onClick: () => updateSettings({ assessmentSnooze: addDays(today, 3) }) }, "Remind me in 3 days"))));
 }
+/* ---------- Tattoo recovery: where you are in the healing, and the rules for today ---------- */
+function TattooCard({ ctx, tattoo }) {
+    const { settings, updateSettings, showToast } = ctx;
+    const [open, setOpen] = useState(false);
+    const back = MODES[settings.modeBefore] ? settings.modeBefore : 'layoff';
+    const leave = () => { updateSettings({ mode: back, tattooStart: null, modeBefore: null }); showToast('Back to ' + MODES[back].name.toLowerCase()); };
+    if (tattoo.over) {
+        return (React.createElement("section", { className: "card", style: { '--accent': 'var(--teal)', paddingLeft: 20 } },
+            React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+            React.createElement("h2", { className: "h2" },
+                "That\u2019s your ",
+                tattoo.total,
+                " days"),
+            React.createElement("p", { className: "small" }, "The surface should be closed and the peeling done. Keep it out of the sun for the rest of the month, and pick things up in this order:"),
+            React.createElement("ul", { className: "rule-list" }, TATTOO_RETURN.map((r) => React.createElement("li", { key: r }, r))),
+            React.createElement("button", { className: "btn primary sm", style: { marginTop: 10 }, onClick: leave },
+                "Back to ",
+                MODES[back].name.toLowerCase())));
+    }
+    return (React.createElement("section", { className: "card", style: { '--accent': 'var(--sage)', paddingLeft: 20 } },
+        React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+        React.createElement("div", { className: "row between", style: { alignItems: 'baseline' } },
+            React.createElement("h2", { className: "h2", style: { margin: 0 } }, "Tattoo recovery"),
+            React.createElement("span", { className: "small num" },
+                "Day ",
+                tattoo.day,
+                " of ",
+                tattoo.total)),
+        React.createElement(Dots, { n: tattoo.day, of: tattoo.total }),
+        React.createElement("p", { className: "small", style: { margin: '8px 0 0' } },
+            React.createElement("span", { style: { color: 'var(--text)' } },
+                tattoo.phase.label,
+                "."),
+            " ",
+            tattoo.phase.detail),
+        React.createElement("button", { className: "link", onClick: () => setOpen(!open) },
+            open ? 'Hide' : 'Show',
+            " what\u2019s out, and why"),
+        open ? (React.createElement("div", null,
+            React.createElement("div", { className: "label", style: { marginTop: 10 } },
+                "Out of training, ",
+                tattoo.placement.toLowerCase()),
+            React.createElement("ul", { className: "rule-list" }, tattoo.avoid.map((r) => React.createElement("li", { key: r }, r))),
+            React.createElement("div", { className: "label" }, "Looking after it"),
+            React.createElement("ul", { className: "rule-list" }, TATTOO_RULES.map((r) => React.createElement("li", { key: r }, r))),
+            React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, onClick: leave }, "Healed already? End tattoo recovery"))) : null));
+}
 /* ---------- Physio rehab: its own card, its own 3–4 a week count ---------- */
 function Dots({ n, of }) {
     return React.createElement("span", { className: "dots", "aria-hidden": "true" }, Array.from({ length: of }, (_, i) => React.createElement("span", { key: i, className: 'dot' + (i < n ? ' on' : '') })));
@@ -2007,13 +2634,22 @@ function RehabCard({ ctx, rec, onStart }) {
             React.createElement("span", { className: "small" },
                 REHAB_TARGET.text,
                 " times a week each")),
+        rec.tattoo && rec.tattoo.rehabPaused ? (React.createElement("p", { className: "note gold", style: { margin: '10px 0 0' } },
+            "On hold until day ",
+            rec.tattoo.rehabBackOn,
+            ".",
+            rec.tattoo.onForearm
+                ? ' Hanging and bloc lifts swell the forearm and move the skin over it, and chalk has no business near an open wound.'
+                : ' Hanging stretches the skin across your upper arm, and the shoulder work is all dumbbells.',
+            " Tell your physio you paused, and start again at the loads you stopped at.")) : null,
         REHAB_IDS.map((tid) => {
             const t = TEMPLATES[tid];
             const n = rehabWeekCount(sessions, tid, today);
             const doneToday = rehabDoneOn(sessions, tid, today);
             const pain = tid === 'FR' && rec.fingerAlert;
             const full = n >= REHAB_TARGET.max;
-            const hint = doneToday ? null
+            const paused = rec.tattoo && rec.tattoo.rehabPaused;
+            const hint = doneToday || paused ? null
                 : pain ? 'Finger pain is ' + rec.fingerPain + '/10 today, so skip the loading.'
                     : full ? 'That’s the top of your physio’s range for this week.'
                         : t.hint;
@@ -2026,7 +2662,7 @@ function RehabCard({ ctx, rec, onStart }) {
                             React.createElement("span", { className: "small num" },
                                 n,
                                 " this week"))),
-                    doneToday ? React.createElement("span", { className: "pill done" }, "Done today") : (React.createElement("button", { className: 'btn sm' + (pain || full ? '' : ' primary'), "aria-label": 'Start ' + t.name.toLowerCase(), onClick: () => onStart(tid) }, "Start"))),
+                    doneToday ? React.createElement("span", { className: "pill done" }, "Done today") : (React.createElement("button", { className: 'btn sm' + (pain || full || paused ? '' : ' primary'), "aria-label": 'Start ' + t.name.toLowerCase(), onClick: () => onStart(tid) }, "Start"))),
                 hint ? React.createElement("p", { className: "small", style: { margin: '6px 0 0' } }, hint) : null));
         }),
         React.createElement("div", { className: "divider" }),
@@ -2050,7 +2686,10 @@ function DailyCard({ ctx }) {
         // eslint-disable-next-line
     }, [ctx.dailyFocus]);
     const hidden = settings.dailyHidden || [];
-    const core = DAILY_CORE.filter((i) => hidden.indexOf(i.id) < 0);
+    const short = !!settings.dailyShort;
+    const ink = settings.mode === 'tattoo' && settings.tattooStart ? settings.tattooArea : null;
+    const core = dailyList(DAILY_CORE, short, ink).filter((i) => hidden.indexOf(i.id) < 0);
+    const inkHidden = dailyHiddenByInk(DAILY_CORE.concat(DAILY_EXTRAS), ink);
     const counted = core.concat(customDaily || []);
     const checks = daily[today] || {};
     const doneN = counted.filter((i) => checks[i.id]).length;
@@ -2061,7 +2700,9 @@ function DailyCard({ ctx }) {
         React.createElement("button", { className: "row between", style: { width: '100%', minHeight: 44 }, onClick: () => setOpen(!open), "aria-expanded": open },
             React.createElement("span", null,
                 React.createElement("span", { className: "h2", style: { display: 'block', margin: 0 } }, "Daily checklist"),
-                React.createElement("span", { className: "small" }, "About 12 minutes, any time of day")),
+                React.createElement("span", { className: "small" },
+                    inkHidden.length ? 'Shorter than usual while your ink heals' : 'About ' + (short ? DAILY_SHORT_MINS : 12) + ' minutes',
+                    ", any time of day")),
             React.createElement("span", { className: "row", style: { gap: 6 } },
                 React.createElement("span", { className: "num", style: { color: doneN === counted.length && counted.length ? 'var(--teal)' : 'var(--muted)' } },
                     doneN,
@@ -2069,6 +2710,14 @@ function DailyCard({ ctx }) {
                     counted.length),
                 React.createElement(IconChevron, { dir: open ? 'up' : 'down', size: 18 }))),
         open ? (React.createElement("div", { style: { marginTop: 8 } },
+            React.createElement("div", { className: "row between", style: { marginBottom: 2 } },
+                React.createElement("span", { className: "small" }, "How much"),
+                React.createElement("div", { className: "seg", role: "group", "aria-label": "Daily checklist length" },
+                    React.createElement("button", { className: !short ? 'on' : '', "aria-pressed": !short, onClick: () => updateSettings({ dailyShort: false }) }, "Everything"),
+                    React.createElement("button", { className: short ? 'on' : '', "aria-pressed": short, onClick: () => updateSettings({ dailyShort: true }) },
+                        "Short ",
+                        DAILY_SHORT_MINS,
+                        "m"))),
             counted.map((it) => (React.createElement(CheckRow, { key: it.id, on: checks[it.id], name: it.n, desc: it.d, onToggle: () => toggle(it.id), right: editing ? (React.createElement("button", { className: "link", style: { color: 'var(--rust)' }, onClick: () => (it.id.indexOf('c_') === 0 ? setCustomDaily((prev) => prev.filter((x) => x.id !== it.id)) : updateSettings({ dailyHidden: [...hidden, it.id] })) }, it.id.indexOf('c_') === 0 ? 'Remove' : 'Hide')) : null }))),
             editing && hidden.length ? (React.createElement("div", { className: "small", style: { marginTop: 8 } },
                 "Hidden: ",
@@ -2076,7 +2725,11 @@ function DailyCard({ ctx }) {
                     "Show ",
                     i.n.toLowerCase()))))) : null,
             React.createElement("div", { className: "label" }, "Extras, when relevant"),
-            DAILY_EXTRAS.map((it) => React.createElement(CheckRow, { key: it.id, on: checks[it.id], name: it.n, desc: it.d, onToggle: () => toggle(it.id) })),
+            dailyList(DAILY_EXTRAS, false, ink).map((it) => React.createElement(CheckRow, { key: it.id, on: checks[it.id], name: it.n, desc: it.d, onToggle: () => toggle(it.id) })),
+            inkHidden.length ? (React.createElement("p", { className: "small", style: { margin: '10px 0 0' } },
+                "Hidden while your ink heals: ",
+                inkHidden.map((i) => i.n.toLowerCase()).join(', '),
+                ". They all work the skin that\u2019s healing.")) : null,
             editing ? (React.createElement("div", { className: "row", style: { marginTop: 12 } },
                 React.createElement("input", { className: "field text", placeholder: "Add an item, e.g. a physio exercise", "aria-label": "New daily item", value: text, onChange: (e) => setText(e.target.value), onKeyDown: (e) => { if (e.key === 'Enter')
                         addItem(); } }),
@@ -2084,7 +2737,7 @@ function DailyCard({ ctx }) {
             React.createElement("button", { className: "link", onClick: () => setEditing(!editing) }, editing ? 'Done editing' : 'Edit list'))) : null));
 }
 function TodayView({ ctx }) {
-    const { today, sessions, setSessions, checkins, setCheckins, settings, plans, setPlans, injuries, showToast } = ctx;
+    const { today, sessions, setSessions, checkins, setCheckins, settings, updateSettings, plans, setPlans, injuries, showToast } = ctx;
     const rec = getRecommendation({ sessions, checkins, settings, plans, ds: today });
     const plan = plans[today] || {};
     const active = sessions.find((s) => s.date === today && s.kind === 'train' && !s.finishedAt && !s.legacy);
@@ -2107,13 +2760,13 @@ function TodayView({ ctx }) {
         !(settings.assessment === 'todo' && settings.assessmentSnooze && settings.assessmentSnooze > today);
     const start = (tid) => {
         setPlans((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), templateId: tid, rest: false } }));
-        setSessions((prev) => [...prev, newSession(tid, today, settings.mode)]);
+        setSessions((prev) => [...prev, newSession(tid, today, settings.mode, settings.express)]);
         setCelebration(null);
         window.scrollTo(0, 0);
     };
     // Rehab starts without touching today's plan, so the planned session is still there afterwards.
     const startRehab = (tid) => {
-        setSessions((prev) => [...prev, newSession(tid, today, settings.mode)]);
+        setSessions((prev) => [...prev, newSession(tid, today, settings.mode, false)]);
         setCelebration(null);
         window.scrollTo(0, 0);
     };
@@ -2163,6 +2816,7 @@ function TodayView({ ctx }) {
                     ": ",
                     React.createElement("span", { className: "num" }, b.label)))) : null,
             React.createElement("button", { className: "link", onClick: () => setCelebration(null) }, "Close"))) : null,
+        rec.tattoo ? React.createElement(TattooCard, { ctx: ctx, tattoo: rec.tattoo }) : null,
         showAssessment ? React.createElement(AssessmentCard, { ctx: ctx }) : null,
         isSetting && !active ? React.createElement(SettingDayCard, { ctx: ctx }) : (React.createElement("div", null,
             !active && (!ci || ciEditing) && !doneToday.length ? (React.createElement(CheckinCard, { initial: ci, hasGrip: hasGrip, onCancel: ciEditing ? () => setCiEditing(false) : null, onSave: (d) => { setCheckins((prev) => ({ ...prev, [today]: { ...d, at: nowIso() } })); setCiEditing(false); }, onSkip: () => setCheckins((prev) => ({ ...prev, [today]: { skipped: true, at: nowIso() } })) })) : null,
@@ -2214,9 +2868,20 @@ function TodayView({ ctx }) {
                 React.createElement("span", { className: "tape", "aria-hidden": "true" }),
                 rec.reasons.map((r, i) => React.createElement("p", { key: 'r' + i, className: "reason" }, r)),
                 rec.notes.map((n, i) => React.createElement("p", { key: 'n' + i, className: "small", style: { margin: '0 0 8px' } }, n)),
-                React.createElement("ul", { className: "plan-list" }, tpl.ex.map((ex) => React.createElement("li", { key: ex.id },
+                tpl.express ? (React.createElement("div", { className: "row between", style: { margin: '2px 0 2px' } },
+                    React.createElement("span", { className: "small" }, "Length"),
+                    React.createElement("div", { className: "seg", role: "group", "aria-label": "Session length" },
+                        React.createElement("button", { className: !settings.express ? 'on' : '', "aria-pressed": !settings.express, onClick: () => updateSettings({ express: false }) },
+                            "Full ",
+                            tpl.mins,
+                            "m"),
+                        React.createElement("button", { className: settings.express ? 'on' : '', "aria-pressed": !!settings.express, onClick: () => updateSettings({ express: true }) },
+                            "Short ",
+                            tpl.expressMins,
+                            "m")))) : null,
+                tpl.freeform ? React.createElement("p", { className: "small", style: { margin: '10px 0 14px' } }, tpl.note) : (React.createElement("ul", { className: "plan-list" }, sessionEx(tpl, settings.express).map((ex) => React.createElement("li", { key: ex.id },
                     React.createElement("span", null, ex.n),
-                    React.createElement("span", { className: "scheme" }, shortScheme(ex))))),
+                    React.createElement("span", { className: "scheme" }, shortScheme(ex)))))),
                 React.createElement("button", { className: "btn primary block", onClick: () => start(templateId) },
                     "Start ",
                     tpl.name),
@@ -2225,9 +2890,11 @@ function TodayView({ ctx }) {
                     React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, onClick: () => setPlans((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), dayType: 'setting' } })) }, "Setting today?")),
                 React.createElement("p", { className: "small", style: { margin: '2px 0 0' } },
                     "About ",
-                    tpl.mins,
-                    " minutes. ",
-                    STRAP_RULE))))),
+                    sessionMins(tpl, settings.express),
+                    " minutes.",
+                    settings.express && tpl.express ? ' A short session you actually do beats a full one you skip.' : '',
+                    " ",
+                    tpl.noStraps ? '' : STRAP_RULE))))),
         showRehab ? React.createElement(RehabCard, { ctx: ctx, rec: rec, onStart: startRehab }) : null,
         React.createElement(DailyCard, { ctx: ctx }),
         plans[today] && plans[today].dayType === 'setting' && (settings.settingDays || []).indexOf(dowOf(today)) < 0 ? (React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, onClick: () => setPlans((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), dayType: null } })) }, "Undo: not a setting day after all")) : null,
@@ -2339,6 +3006,25 @@ function LogView({ ctx }) {
                 " your usual week.",
                 ' ',
                 acwr.flag === 'spike' ? 'That’s a spike, so the app will steer you to easier sessions until it settles.' : acwr.flag === 'low' ? 'Lighter than usual, so there’s room to build.' : 'Right in the normal range.')) : (React.createElement("p", { className: "small", style: { margin: 0 } }, "This comparison needs about 3 weeks and 6 logged sessions before it means anything, so the app ignores it until then. Effort \u00D7 minutes of each session feeds it."))),
+        React.createElement("section", { className: "card" },
+            React.createElement("h2", { className: "h3" }, "What you\u2019ve trained lately"),
+            React.createElement("p", { className: "small", style: { marginTop: 0 } }, "From everything you\u2019ve logged in the last 7 days, your own sessions included. This is what the app reads before suggesting tomorrow."),
+            (() => {
+                const hist = patternHistory(sessions, today, 7);
+                const rows = ['grip', 'pull', 'push', 'legs', 'hinge', 'core', 'shoulder', 'cardio'];
+                const when = (h) => (!h ? 'Not this week' : h.lastGap === 0 ? 'Today' : h.lastGap === 1 ? 'Yesterday' : h.lastGap + ' days ago');
+                return rows.map((k) => {
+                    const h = hist[k];
+                    return (React.createElement("div", { key: k, className: "list-row" },
+                        React.createElement("span", null, PATTERNS[k].n),
+                        React.createElement("span", { className: "row", style: { gap: 10 } },
+                            h ? React.createElement("span", { className: "small num" },
+                                h.sets,
+                                " ",
+                                h.sets === 1 ? 'set' : 'sets') : null,
+                            React.createElement("span", { className: "small num", style: { color: h && h.lastGap <= 2 ? 'var(--teal)' : 'var(--muted)', minWidth: 78, textAlign: 'right' } }, when(h)))));
+                });
+            })()),
         unconfirmed.length ? (React.createElement("section", { className: "card" },
             React.createElement("h2", { className: "h3" }, "Did you set on these days?"),
             React.createElement("p", { className: "small", style: { marginTop: 0 } }, "They were on your schedule with nothing logged. Confirming them keeps the recovery advice accurate."),
@@ -2542,10 +3228,42 @@ function InjurySheet({ injury, onSave, onDelete, onClose }) {
         injury ? React.createElement("button", { className: "link", style: { color: 'var(--rust)' }, onClick: () => { if (window.confirm('Delete this injury?'))
                 onDelete(d.id); } }, "Delete injury") : null));
 }
-function ModeSheet({ mode, onSet, onClose }) {
+function ModeSheet({ mode, settings, today, onSet, onTattoo, onClose }) {
     const [c1, setC1] = useState(false);
     const [c2, setC2] = useState(false);
+    const [ink, setInk] = useState(false);
+    const [start, setStart] = useState(today);
+    const [days, setDays] = useState(String(settings && settings.tattooDays ? settings.tattooDays : TATTOO_DEFAULT_DAYS));
+    const [area, setArea] = useState((settings && settings.tattooArea) || 'other');
     const CheckLine = ({ on, set, text }) => React.createElement(CheckRow, { on: on, name: text, onToggle: () => set(!on) });
+    if (mode === 'tattoo') {
+        const back = MODES[settings && settings.modeBefore] ? settings.modeBefore : 'layoff';
+        return (React.createElement(Sheet, { title: "Change mode", onClose: onClose },
+            React.createElement("p", { className: "small" },
+                "You\u2019re in tattoo recovery. It ends on its own after your ",
+                settings.tattooDays || TATTOO_DEFAULT_DAYS,
+                " days, or you can go back now."),
+            React.createElement("button", { className: "btn primary block", onClick: () => onSet(back) },
+                "Back to ",
+                MODES[back].name.toLowerCase())));
+    }
+    if (ink) {
+        return (React.createElement(Sheet, { title: "Tattoo recovery", onClose: onClose },
+            React.createElement("p", { className: "small" }, "A temporary, low-intensity plan: walking and visualization while it weeps, mobility and gentle strength through the scabbing, short versions of your normal sessions as it closes over. When the days are up, the app offers your current mode back."),
+            React.createElement("div", { className: "label" }, "First session date"),
+            React.createElement("input", { className: "field text", type: "date", "aria-label": "Tattoo date", value: start, onChange: (e) => setStart(e.target.value) }),
+            React.createElement("div", { className: "label" }, "How many days"),
+            React.createElement(ChipRow, { options: [7, 10, 14, 21].map((n) => ({ value: n, label: n + ' days' })), value: Number(days), onChange: (v) => setDays(String(v || days)) }),
+            React.createElement("div", { className: "label" }, "Where is it?"),
+            React.createElement(ChipRow, { options: TATTOO_PLACEMENTS, value: area, onChange: (v) => setArea(v || area) }),
+            React.createElement("p", { className: "small" }, area === 'forearm'
+                ? 'Gripping swells the forearm and moves the skin over it, so finger and shoulder rehab both pause for the whole block, and nothing is held in your hands until the skin closes.'
+                : area === 'arm'
+                    ? 'Hanging stretches the skin across your upper arm and the shoulder work is all dumbbells, so physio rehab pauses until day 11.'
+                    : 'Physio rehab carries on, kept cool and unhurried.'),
+            React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, disabled: !start, onClick: () => onTattoo({ start, days: Number(days) || TATTOO_DEFAULT_DAYS, area }) }, "Start tattoo recovery"),
+            React.createElement("button", { className: "link", onClick: () => setInk(false) }, "Back")));
+    }
     return (React.createElement(Sheet, { title: "Change mode", onClose: onClose },
         mode === 'layoff' ? (React.createElement("div", null,
             React.createElement("p", { className: "small" }, "Grip reintroduction adds easy climbing on big holds. It needs a physio\u2019s clearance first."),
@@ -2560,7 +3278,10 @@ function ModeSheet({ mode, onSet, onClose }) {
         mode === 'full' ? (React.createElement("div", null,
             React.createElement("p", { className: "small" }, "Something flared up? Step back any time. No questions asked."),
             React.createElement("button", { className: "btn block", onClick: () => onSet('return') }, "Back to grip reintroduction"),
-            React.createElement("button", { className: "btn block", style: { marginTop: 10 }, onClick: () => onSet('layoff') }, "Back to the rebuild"))) : null));
+            React.createElement("button", { className: "btn block", style: { marginTop: 10 }, onClick: () => onSet('layoff') }, "Back to the rebuild"))) : null,
+        React.createElement("div", { className: "divider" }),
+        React.createElement("p", { className: "small", style: { marginTop: 0 } }, "Getting tattooed? Fresh ink rules out heavy sweating and anything that rubs, for about two weeks."),
+        React.createElement("button", { className: "btn block", onClick: () => setInk(true) }, "Set up tattoo recovery")));
 }
 function BodyView({ ctx }) {
     const { injuries, setInjuries, checkins, settings, updateSettings, physio, setPhysio, today, showToast } = ctx;
@@ -2631,7 +3352,7 @@ function BodyView({ ctx }) {
             React.createElement("span", { className: "pill resolved" }, "Resolved"),
             React.createElement("span", { style: { display: 'block', marginTop: 6 } }, i.name)))) : null,
         editing ? React.createElement(InjurySheet, { injury: editing === 'new' ? null : editing, onClose: () => setEditing(null), onSave: saveInjury, onDelete: (id) => { setInjuries((prev) => prev.filter((x) => x.id !== id)); setEditing(null); } }) : null,
-        modeOpen ? React.createElement(ModeSheet, { mode: settings.mode, onClose: () => setModeOpen(false), onSet: (m) => { updateSettings({ mode: m }); setModeOpen(false); showToast('Mode: ' + MODES[m].name); } }) : null));
+        modeOpen ? (React.createElement(ModeSheet, { mode: settings.mode, settings: settings, today: today, onClose: () => setModeOpen(false), onSet: (m) => { updateSettings({ mode: m, ...(settings.mode === 'tattoo' ? { tattooStart: null, modeBefore: null } : {}) }); setModeOpen(false); showToast('Mode: ' + MODES[m].name); }, onTattoo: ({ start, days, area }) => { updateSettings({ mode: 'tattoo', modeBefore: settings.mode, tattooStart: start, tattooDays: days, tattooArea: area }); setModeOpen(false); showToast('Tattoo recovery from ' + fmtDate(start)); } })) : null));
 }
 function CoachView({ ctx, onBack }) {
     const text = buildStatus(ctx);
@@ -2652,7 +3373,7 @@ function LibraryView({ ctx, onBack }) {
     const groups = [
         { title: 'Physio rehab, ' + REHAB_TARGET.text + ' times a week each', ids: REHAB_IDS },
         { title: MODES.layoff.name, ids: ['A', 'B', 'C'] },
-        { title: 'Any time you want it', ids: ['CLIMB', 'CORE', 'REC'] },
+        { title: 'Any time you want it', ids: ['CLIMB', 'CORE', 'FREE', 'REC'] },
         { title: MODES.return.name, ids: ['R1'] },
         { title: MODES.full.name, ids: ['P1', 'P2', 'P3', 'P4'] },
     ];
@@ -2822,13 +3543,28 @@ function SettingsView({ ctx, onBack }) {
             React.createElement("p", { className: "small" }, "Each exercise can switch between kg and lb while you log, and remembers its choice."),
             React.createElement(ChipRow, { options: [{ value: 'kg', label: 'kg' }, { value: 'lb', label: 'lb' }], value: settings.defaultUnit, onChange: (v) => updateSettings({ defaultUnit: v || settings.defaultUnit }) })),
         React.createElement("section", { className: "card" },
-            React.createElement("h2", { className: "h3" }, "Weekly reminders"),
-            React.createElement("p", { className: "small" }, "Adds one repeating event to your calendar with an alert 15 minutes before. Set it once; it repeats every week."),
+            React.createElement("h2", { className: "h3" }, "Reminders"),
+            React.createElement("p", { className: "small" }, "Three repeating events, added to your phone\u2019s calendar in one go. They alert you whether or not the app is open, and they keep repeating until you delete them."),
+            React.createElement("div", { className: "label" }, "Daily checklist"),
+            React.createElement("div", { className: "row" },
+                React.createElement("button", { className: 'chip' + (settings.dailyReminderOn !== false ? ' on' : ''), "aria-pressed": settings.dailyReminderOn !== false, onClick: () => updateSettings({ dailyReminderOn: settings.dailyReminderOn === false }) }, "Every day"),
+                React.createElement("input", { className: "field", style: { maxWidth: 130 }, type: "time", "aria-label": "Daily checklist time", value: settings.dailyReminderTime, onChange: (e) => updateSettings({ dailyReminderTime: e.target.value }) })),
+            React.createElement("div", { className: "label" }, "Physio rehab"),
+            React.createElement(ChipRow, { multi: true, small: true, options: dayOpts, value: settings.rehabReminderDays, onChange: (v) => updateSettings({ rehabReminderDays: v || [] }) }),
+            React.createElement("div", { className: "row", style: { marginTop: 10 } },
+                React.createElement("span", { className: "small", style: { width: 44 } }, "Time"),
+                React.createElement("input", { className: "field", style: { maxWidth: 130 }, type: "time", "aria-label": "Rehab reminder time", value: settings.rehabReminderTime, onChange: (e) => updateSettings({ rehabReminderTime: e.target.value }) })),
+            React.createElement("div", { className: "label" }, "Training sessions"),
             React.createElement(ChipRow, { multi: true, small: true, options: dayOpts, value: settings.reminderDays, onChange: (v) => updateSettings({ reminderDays: v || [] }) }),
             React.createElement("div", { className: "row", style: { marginTop: 10 } },
-                React.createElement("span", { className: "small" }, "Time"),
-                React.createElement("input", { className: "field", style: { maxWidth: 140 }, type: "time", "aria-label": "Reminder time", value: settings.reminderTime, onChange: (e) => updateSettings({ reminderTime: e.target.value }) })),
-            React.createElement("button", { className: "btn block", style: { marginTop: 12 }, disabled: !(settings.reminderDays || []).length, onClick: async () => { const r = await deliverFile('training-reminders.ics', buildICS(settings.reminderDays, settings.reminderTime), 'text/calendar', false); showToast(r === 'failed' ? 'Couldn’t create the calendar file' : 'Open the file to add it to Calendar'); } }, "Add reminders to Calendar")),
+                React.createElement("span", { className: "small", style: { width: 44 } }, "Time"),
+                React.createElement("input", { className: "field", style: { maxWidth: 130 }, type: "time", "aria-label": "Training reminder time", value: settings.reminderTime, onChange: (e) => updateSettings({ reminderTime: e.target.value }) })),
+            React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, disabled: !(settings.reminderDays || []).length && !(settings.rehabReminderDays || []).length && settings.dailyReminderOn === false, onClick: async () => { const r = await deliverFile('training-reminders.ics', buildICS(settings.reminderDays, settings.reminderTime, settings), 'text/calendar', false); showToast(r === 'failed' ? 'Couldn’t create the calendar file' : 'Open the file, then tap Add All'); } }, "Add reminders to Calendar"),
+            React.createElement("p", { className: "small", style: { margin: '10px 0 0' } }, "The app itself can\u2019t buzz your phone: it\u2019s a page on your Home Screen with no server behind it, and nothing is running when it\u2019s closed. Calendar alerts are the one thing that fires reliably, and they work offline. Adding them again later makes duplicates, so delete the old events first.")),
+        React.createElement("section", { className: "card" },
+            React.createElement("h2", { className: "h3" }, "Timer sound"),
+            React.createElement("p", { className: "small" }, "Beeps at the start and end of every guided hold, and a countdown into each change. Turn it off for a quiet gym."),
+            React.createElement(ChipRow, { options: [{ value: true, label: 'On' }, { value: false, label: 'Off' }], value: settings.sound !== false, onChange: (v) => updateSettings({ sound: v === null ? settings.sound !== false : v }) })),
         React.createElement("section", { className: "card" },
             React.createElement("h2", { className: "h3" }, "Backup"),
             React.createElement("p", { className: "small" },
@@ -2902,6 +3638,7 @@ function App() {
     const [settingsRaw, setSettingsRaw] = useStore('settings', DEFAULT_SETTINGS);
     const [plans, setPlans] = useStore('plans', {});
     const [customDaily, setCustomDaily] = useStore('customDaily', []);
+    const [customEx, setCustomEx] = useStore('customEx', []);
     const [physio, setPhysio] = useStore('physio', { notes: '' });
     const [toast, setToast] = useState(null);
     const [today, setToday] = useState(localDate());
@@ -2924,7 +3661,7 @@ function App() {
         return () => { clearInterval(t); document.removeEventListener('visibilitychange', v); };
     }, []);
     useEffect(() => { window.scrollTo(0, 0); }, [tab, sub]);
-    const ctx = { today, sessions, setSessions, checkins, setCheckins, daily, setDaily, injuries, setInjuries, benchmarks, setBenchmarks, settings, updateSettings, plans, setPlans, customDaily, setCustomDaily, physio: physio || { notes: '' }, setPhysio, showToast,
+    const ctx = { today, sessions, setSessions, checkins, setCheckins, daily, setDaily, injuries, setInjuries, benchmarks, setBenchmarks, settings, updateSettings, plans, setPlans, customDaily, setCustomDaily, customEx, setCustomEx, physio: physio || { notes: '' }, setPhysio, showToast,
         dailyFocus, clearDailyFocus: () => setDailyFocus(0), openDaily: () => { setTab('today'); setSub(null); setDailyFocus((n) => n + 1); },
         goTo: (t) => { setTab(t); setSub(null); } };
     return (React.createElement("div", { className: "app" },
