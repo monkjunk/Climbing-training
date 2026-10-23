@@ -145,6 +145,13 @@ a.list-row{color:var(--teal)}
 .guided-count{font-family:var(--round);font-size:34px;font-weight:700;line-height:1;min-width:46px;text-align:right;font-variant-numeric:tabular-nums}
 .guided.done{border-color:var(--accent,var(--teal))}
 .dots{display:inline-flex;gap:4px;align-items:center;flex-wrap:wrap}
+.sstag{display:inline-flex;align-items:center;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 8px;border-radius:999px;background:color-mix(in srgb,var(--accent,var(--teal)) 26%,var(--surface));color:var(--text)}
+.plan-list li.ss-row{border-bottom:0;padding:10px 0 2px}
+.plan-list li.ss-item{border-bottom:0;padding:4px 0 4px 12px;border-left:2px solid color-mix(in srgb,var(--accent,var(--teal)) 50%,transparent);margin-left:2px}
+.plan-list li.ss-item+li:not(.ss-item){border-top:1px solid var(--line);margin-top:8px}
+.ss-group{border-left:2px solid color-mix(in srgb,var(--accent,var(--teal)) 50%,transparent);padding-left:12px;margin:4px 0}
+.ss-head{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:10px 0 2px}
+.restbar-text{line-height:1.15}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 </head>
@@ -459,8 +466,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
    No personal or medical details live in this code. Everything about the person using it
    (injuries, logs, check-ins, notes) is stored only on their own device. */
 const { useState, useEffect, useRef, useCallback } = React;
-const APP_VERSION = '3.5';
-const APP_BUILD = '2026-10-14';
+const APP_VERSION = '3.7';
+const APP_BUILD = '2026-10-22';
 const NS = 'tc3:';
 const OLD_NS = 'training-companion:';
 /* ---------- Dates: always the phone's LOCAL calendar date, never UTC ---------- */
@@ -753,6 +760,10 @@ const MEASURES = [
 const REHAB_IDS = ['FR', 'SR'];
 const REHAB_TARGET = { min: 3, max: 4, text: '3–4' };
 const PHYSIO_ADVICE = 'Your physio’s advice: keep an eye on your overall climbing volume, and be smart with the boulders you try.';
+// Two exercises that don't compete for the same muscles, alternated: each one still gets its
+// full rest while you're doing the other, so the session is shorter without rushing anything.
+const SUPERSET_REST = 45;
+const SUPERSET_RULE = 'Alternate the two, about 45 seconds between them. Each one still gets its full rest while you do the other, so nothing is rushed and the session is shorter.';
 const STRAP_RULE = 'Use lifting straps or wrist hooks for every pull and any weight you hold, so the injured hand isn’t gripping.';
 /* Exercise fields: type is weight | reps | hold | time | metric | check.
    sets, lo–hi = target range (reps, or seconds for holds). rir = reps left in reserve on the last set.
@@ -762,34 +773,35 @@ const STRAP_RULE = 'Use lifting straps or wrist hooks for every pull and any wei
    They never suggest going up and never count as personal bests; the physio decides progressions. */
 const TEMPLATES = {
     A: {
-        id: 'A', main: 'legs', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
+        id: 'A', pairs: [['a-goblet', 'a-pushup'], ['a-bss', 'a-ohp'], ['a-dips', 'a-wheel'], ['a-cph', 'a-toecurl']], main: 'legs', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
         express: ['a-warm', 'a-goblet', 'a-bss', 'a-pushup', 'a-wheel'], expressMins: 28,
         ex: [
             { id: 'a-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 10 scap settings, 15 band external rotations per arm and 10 leg swings per side.' },
-            { id: 'a-goblet', pat: 'legs', n: 'Goblet squat', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 20, how: 'Hold the kettlebell by the horns against your chest with open palms, so your fingers aren’t gripping. Sit down between your heels to full depth, 3 seconds down, then drive up.' },
-            { id: 'a-bss', pat: 'legs', n: 'Bulgarian split squat', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 8, perHand: true, side: true, how: 'Rear foot on a bench. Dumbbells at your sides in lifting straps, or one held at your chest. Lower until your front thigh is close to parallel.' },
-            { id: 'a-pushup', pat: 'push', n: 'Push-up', type: 'reps', sets: 3, lo: 8, hi: 15, harder: 'raise your feet on a bench', how: 'Palms flat, fingers spread. Body in one straight line, chest to the floor.' },
-            { id: 'a-ohp', pat: 'push', n: 'Dumbbell overhead press', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 8, perHand: true, how: 'Light grip, ribs down, press straight overhead. Stop if the injured finger complains.' },
-            { id: 'a-dips', pat: 'push', n: 'Dips', type: 'reps', sets: 3, lo: 6, hi: 12, harder: 'add a pause at the bottom, then weight', how: 'Palms on the bars, all the way down under control. Use a bench if bar dips are too hard for now.' },
-            { id: 'a-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'a-cph', pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
-            { id: 'a-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Builds the strength your toe hooks rely on.' },
+            { id: 'a-goblet', rest: 120, pat: 'legs', n: 'Goblet squat', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 20, how: 'Hold the kettlebell by the horns against your chest with open palms, so your fingers aren’t gripping. Sit down between your heels to full depth, 3 seconds down, then drive up.' },
+            { id: 'a-pushup', rest: 120, pat: 'push', n: 'Push-up', type: 'reps', sets: 3, lo: 8, hi: 15, harder: 'raise your feet on a bench', how: 'Palms flat, fingers spread. Body in one straight line, chest to the floor.' },
+            { id: 'a-bss', rest: 120, pat: 'legs', n: 'Bulgarian split squat', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 8, perHand: true, side: true, how: 'Rear foot on a bench. Dumbbells at your sides in lifting straps, or one held at your chest. Lower until your front thigh is close to parallel.' },
+            { id: 'a-ohp', rest: 120, pat: 'push', n: 'Dumbbell overhead press', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 8, perHand: true, how: 'Light grip, ribs down, press straight overhead. Stop if the injured finger complains.' },
+            { id: 'a-dips', rest: 120, pat: 'push', n: 'Dips', type: 'reps', sets: 3, lo: 6, hi: 12, harder: 'add a pause at the bottom, then weight', how: 'Palms on the bars, all the way down under control. Use a bench if bar dips are too hard for now.' },
+            { id: 'a-wheel', rest: 60, pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'a-cph', rest: 60, pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
+            { id: 'a-toecurl', rest: 60, pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. This builds the small muscles inside the foot, which is what you stand on small edges with, and it stops your foot collapsing inside a tight shoe. It is not toe hook work: hooking is the front of your shin, trained by the banded dorsiflexion in Session B.' },
         ],
     },
     B: {
-        id: 'B', main: 'pull', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
+        id: 'B', pairs: [['b-rdl', 'b-toehook'], ['b-pullup', 'b-hamcurl'], ['b-lockoff', 'b-deadbug'], ['b-row', 'b-lsit'], ['b-backext', 'b-dorsi']], main: 'pull', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
         express: ['b-warm', 'b-rdl', 'b-pullup', 'b-row', 'b-backext'], expressMins: 28,
         ex: [
             { id: 'b-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 15 band pull-aparts, 8 scap pull-ups in straps and 10 bodyweight hip hinges.' },
-            { id: 'b-rdl', pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand, in a lifting strap. Hinge back with a flat back, 3 seconds down.' },
-            { id: 'b-pullup', pat: 'pull', n: 'Strap pull-up', type: 'reps', sets: 4, lo: 5, hi: 8, harder: 'add 2.5 kg, held between your feet', how: 'Lifting straps or wrist hooks on the bar, fingers relaxed so the straps hold your weight. Full hang to chin over the bar.', tip: 'If you feel the injured finger working, stop and check with your physio first.' },
-            { id: 'b-lockoff', pat: 'pull', n: 'Strap lock-off hold', type: 'hold', sets: 3, lo: 8, hi: 12, side: true, how: 'Pull up with both arms in straps, then hold at 90° on one arm while the other hand rests lightly on your wrist.' },
-            { id: 'b-row', pat: 'pull', n: 'One-arm dumbbell row', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 16, side: true, how: 'Knee and hand on a bench, dumbbell in a lifting strap. Pull to your hip and squeeze your shoulder blade back.' },
-            { id: 'b-hamcurl', pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Use the machine if your gym has one, starting near 20 kg. Otherwise lie face down with an ankle weight. Slow on the way down. Stronger hamstrings mean stronger heel hooks.' },
-            { id: 'b-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
-            { id: 'b-toehook', pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold, with open hands on big holds or no hands. At stage 2, add a slow reach with the opposite arm while holding. Stages are in More, under Grip and toe hooks.' },
-            { id: 'b-lsit', pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
-            { id: 'b-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'b-rdl', rest: 120, pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand, in a lifting strap. Hinge back with a flat back, 3 seconds down.' },
+            { id: 'b-toehook', rest: 60, pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold, with open hands on big holds or no hands. At stage 2, add a slow reach with the opposite arm while holding. Stages are in More, under Grip and toe hooks.' },
+            { id: 'b-pullup', rest: 120, pat: 'pull', n: 'Strap pull-up', type: 'reps', sets: 4, lo: 5, hi: 8, harder: 'add 2.5 kg, held between your feet', how: 'Lifting straps or wrist hooks on the bar, fingers relaxed so the straps hold your weight. Full hang to chin over the bar.', tip: 'If you feel the injured finger working, stop and check with your physio first.' },
+            { id: 'b-hamcurl', rest: 120, pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Use the machine if your gym has one, starting near 20 kg. Otherwise lie face down with an ankle weight. Slow on the way down. Stronger hamstrings mean stronger heel hooks.' },
+            { id: 'b-lockoff', rest: 120, pat: 'pull', n: 'Strap lock-off hold', type: 'hold', sets: 3, lo: 8, hi: 12, side: true, how: 'Pull up with both arms in straps, then hold at 90° on one arm while the other hand rests lightly on your wrist.' },
+            { id: 'b-deadbug', rest: 60, pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'b-row', rest: 120, pat: 'pull', n: 'One-arm dumbbell row', type: 'weight', sets: 3, lo: 8, hi: 12, rir: 2, startKg: 16, side: true, how: 'Knee and hand on a bench, dumbbell in a lifting strap. Pull to your hip and squeeze your shoulder blade back.' },
+            { id: 'b-lsit', rest: 60, pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
+            { id: 'b-backext', rest: 120, pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
+            { id: 'b-dorsi', rest: 60, pat: 'legs', n: 'Banded dorsiflexion', type: 'reps', sets: 3, lo: 15, hi: 20, side: true, harder: 'stand further from the anchor, or use a heavier band', how: 'Sit with your leg straight, a band looped round your forefoot and anchored in front of you. Pull your toes and the top of your foot up toward your shin against the band, hold a second at the top, then lower slowly. This is the muscle that actually does the hooking, and it is the one thing the plan was missing for toe hooks.' },
         ],
     },
     C: {
@@ -818,15 +830,15 @@ const TEMPLATES = {
         ],
     },
     CORE: {
-        id: 'CORE', main: 'core', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
+        id: 'CORE', pairs: [['k-deadbug', 'k-backext']], main: 'core', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
         express: ['k-deadbug', 'k-wheel', 'k-backext'], expressMins: 15,
         ex: [
-            { id: 'k-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
-            { id: 'k-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'k-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
-            { id: 'k-reach', pat: 'core', n: 'Side plank reach-through', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, harder: 'raise your top leg while you do it', how: 'Side plank on your forearm. Thread your top arm under your body, then rotate it open toward the ceiling. Hips stay high the whole time.' },
-            { id: 'k-cph', pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
-            { id: 'k-lsit', pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
+            { id: 'k-deadbug', rest: 60, pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'k-backext', rest: 60, pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down on the floor or a back-extension bench. Squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hug a 5 kg plate to your chest.' },
+            { id: 'k-wheel', rest: 60, pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'k-reach', rest: 60, pat: 'core', n: 'Side plank reach-through', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, harder: 'raise your top leg while you do it', how: 'Side plank on your forearm. Thread your top arm under your body, then rotate it open toward the ceiling. Hips stay high the whole time.' },
+            { id: 'k-cph', rest: 60, pat: 'core', n: 'Copenhagen plank', type: 'hold', sets: 3, lo: 20, hi: 30, side: true, how: 'Side plank with your top leg on a bench and your bottom leg lifted. Works the inner thigh and core with no grip at all.' },
+            { id: 'k-lsit', rest: 60, pat: 'core', n: 'Tuck L-sit', type: 'hold', sets: 3, lo: 10, hi: 20, how: 'Palms flat on the floor or on two blocks, not gripping handles. Press down, lift your hips and tuck your knees.' },
         ],
     },
     FR: {
@@ -884,7 +896,7 @@ const TEMPLATES = {
         ex: [
             { id: 'tm-walk', pat: 'cardio', n: 'Easy walk or bike', type: 'time', target: 25, how: 'Conversational pace, enough to move blood around without heating up. On a bike, rest your hands on the bars rather than gripping, and keep your forearms off the pads.' },
             { id: 'tm-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 3 × 10–15 s per side, arms out in front for balance.\n90/90 hip switches, 3 × 8, hands on your knees rather than planted behind you.\nActive high-step holds, 3 × 8 s per leg, hands free.\nKneeling hip flexor stretch, 2 × 45 s per side.' },
-            { id: 'tm-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Nothing above your waist is involved, so your toe hooks keep their strength right through the break.' },
+            { id: 'tm-toecurl', rest: 60, pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold. Nothing above your waist is involved, so your feet keep their strength right through the break.' },
             { id: 'tm-video', pat: 'skill', n: 'Watch and read climbing', type: 'check', how: '15 minutes of video of your own projects or of climbers who move the way you want to. Pause and name what their feet are doing. Free technique while you can’t pull.' },
             { id: 'tm-visual', pat: 'skill', n: 'Visualization', type: 'check', how: '10 minutes. One problem, move by move, in real time.' },
             { id: 'tm-neck', n: 'Chin tucks', type: 'check', how: '10 × 2 seconds, chin straight back rather than down. Add the shoulder ball and stretch only if the ink is nowhere near your shoulder.' },
@@ -895,12 +907,12 @@ const TEMPLATES = {
         note: 'Every one of these works with empty hands and your forearms off the floor. Cool room, long rests, stop well short. Maintenance, not training.',
         ex: [
             { id: 'ts-warm', n: 'Warm-up', type: 'check', how: '5 minutes of easy walking, then 10 leg swings per side and 10 bodyweight hip hinges.' },
-            { id: 'ts-squat', pat: 'legs', n: 'Bodyweight squat', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'Nothing in your hands, arms out in front as a counterweight. Full depth, 3 seconds down, pause at the bottom. Slowed down like that, bodyweight is plenty for two weeks.' },
-            { id: 'ts-split', pat: 'legs', n: 'Split squat, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Rear foot on the floor rather than a bench, so you don’t need a hand for balance. Hands on your hips, controlled.' },
-            { id: 'ts-bridge', pat: 'hinge', n: 'Single-leg glute bridge', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back, one foot planted, the other knee hugged toward your chest. Drive through the heel and squeeze at the top. Arms resting palms up, so no forearm is pressed into the mat.' },
-            { id: 'ts-deadbug', pat: 'core', n: 'Dead bug, arms up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back with both arms pointing straight at the ceiling the whole time, so nothing touches the floor. Lower one leg at a time, lower back flat.' },
-            { id: 'ts-hollow', pat: 'core', n: 'Hollow hold', type: 'hold', sets: 3, lo: 20, hi: 30, how: 'On your back, arms overhead and clear of the floor, legs straight and low, lower back pressed down. The core work you normally get from planks, without a forearm on the ground.' },
-            { id: 'ts-toecurl', pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold.' },
+            { id: 'ts-squat', rest: 90, pat: 'legs', n: 'Bodyweight squat', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'Nothing in your hands, arms out in front as a counterweight. Full depth, 3 seconds down, pause at the bottom. Slowed down like that, bodyweight is plenty for two weeks.' },
+            { id: 'ts-split', rest: 90, pat: 'legs', n: 'Split squat, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Rear foot on the floor rather than a bench, so you don’t need a hand for balance. Hands on your hips, controlled.' },
+            { id: 'ts-bridge', rest: 90, pat: 'hinge', n: 'Single-leg glute bridge', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back, one foot planted, the other knee hugged toward your chest. Drive through the heel and squeeze at the top. Arms resting palms up, so no forearm is pressed into the mat.' },
+            { id: 'ts-deadbug', rest: 60, pat: 'core', n: 'Dead bug, arms up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'On your back with both arms pointing straight at the ceiling the whole time, so nothing touches the floor. Lower one leg at a time, lower back flat.' },
+            { id: 'ts-hollow', rest: 60, pat: 'core', n: 'Hollow hold', type: 'hold', sets: 3, lo: 20, hi: 30, how: 'On your back, arms overhead and clear of the floor, legs straight and low, lower back pressed down. The core work you normally get from planks, without a forearm on the ground.' },
+            { id: 'ts-toecurl', rest: 60, pat: 'legs', n: 'Seated toe curl hold', type: 'hold', sets: 3, lo: 10, hi: 15, side: true, how: 'Foot flat, curl your toes down hard into a towel and hold.' },
         ],
     },
     TC: {
@@ -908,9 +920,9 @@ const TEMPLATES = {
         note: 'From day 11, once the skin has closed over. Sweat is fine now, so rinse gently afterwards. Your hands stay empty until the piece has stopped flaking.',
         ex: [
             { id: 'tc-intervals', pat: 'cardio', n: 'Intervals', type: 'time', target: 22, how: 'Bike or incline walk, hands resting rather than gripping. No rower, it’s a grip exercise. 8–10 rounds of 1 minute hard and 1 minute easy, building back up rather than starting where you left off.' },
-            { id: 'tc-stepup', pat: 'legs', n: 'Step-up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Knee-height box, no weight, no hand on anything. Drive through the top foot and lower slowly.' },
-            { id: 'tc-rdl', pat: 'hinge', n: 'Single-leg RDL, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Hands on your hips. Hinge back with a flat back until you feel the hamstring, 3 seconds down. The balance is the point.' },
-            { id: 'tc-hollow', pat: 'core', n: 'Hollow rock', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'From the hollow hold position, arms overhead and off the floor, rocking from your shoulders rather than your hips.' },
+            { id: 'tc-stepup', rest: 90, pat: 'legs', n: 'Step-up', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Knee-height box, no weight, no hand on anything. Drive through the top foot and lower slowly.' },
+            { id: 'tc-rdl', rest: 90, pat: 'hinge', n: 'Single-leg RDL, bodyweight', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'Hands on your hips. Hinge back with a flat back until you feel the hamstring, 3 seconds down. The balance is the point.' },
+            { id: 'tc-hollow', rest: 60, pat: 'core', n: 'Hollow rock', type: 'reps', sets: 3, lo: 12, hi: 15, how: 'From the hollow hold position, arms overhead and off the floor, rocking from your shoulders rather than your hips.' },
             { id: 'tc-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches with your hands on your knees, active high-step holds and the kneeling hip flexor stretch.' },
         ],
     },
@@ -929,17 +941,17 @@ const TEMPLATES = {
         ],
     },
     P1: {
-        id: 'P1', main: 'grip', name: 'Power endurance', focus: 'Circuits and core', color: 'var(--teal)', mins: 75,
+        id: 'P1', pairs: [['p1-deadbug', 'p1-backext']], main: 'grip', name: 'Power endurance', focus: 'Circuits and core', color: 'var(--teal)', mins: 75,
         express: ['p1-warm', 'p1-4x4', 'p1-wheel', 'p1-sideplank'], expressMins: 35,
         ex: [
             { id: 'p1-warm', n: 'Warm-up', type: 'check', how: '15 min of easy climbing, plus 10 scap settings and 15 band external rotations per arm.' },
             { id: 'p1-4x4', pat: ['grip', 'pull'], n: '4 × 4 circuit', type: 'check', how: 'Four problems a few grades below your limit, back to back with no rest, then 4 minutes off. Four rounds. No boards until you’ve had 4+ weeks of pain-free full climbing.' },
             { id: 'p1-traverse', pat: ['grip', 'pull'], n: 'Linked traverse', type: 'check', how: '3 × 3–4 minutes of continuous climbing. Keep moving, no resting on jugs.' },
-            { id: 'p1-deadbug', pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
-            { id: 'p1-wheel', pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
-            { id: 'p1-backext', pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down, squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hold a 5 kg plate at your chest.' },
-            { id: 'p1-sideplank', pat: 'core', n: 'Side plank', type: 'hold', sets: 3, lo: 20, hi: 40, side: true, how: 'On your forearm with feet stacked. Keep your hips high in a straight line.' },
-            { id: 'p1-wristext', n: 'Band wrist extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Forearm on your thigh, palm down, band under your foot. Lift the back of your hand slowly.' },
+            { id: 'p1-deadbug', rest: 60, pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
+            { id: 'p1-backext', rest: 120, pat: 'hinge', n: 'Back extension', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 0, bwOk: true, how: 'Face down, squeeze your glutes and lift your chest to neutral, not into an arch. Bodyweight first; once 3 × 15 is easy, hold a 5 kg plate at your chest.' },
+            { id: 'p1-wheel', rest: 60, pat: 'core', n: 'Ab wheel rollout', type: 'reps', sets: 3, lo: 8, hi: 12, harder: 'roll further, then try from standing', how: 'From your knees, roll out as far as you can without your lower back sagging, then pull back with your abs.' },
+            { id: 'p1-sideplank', rest: 60, pat: 'core', n: 'Side plank', type: 'hold', sets: 3, lo: 20, hi: 40, side: true, how: 'On your forearm with feet stacked. Keep your hips high in a straight line.' },
+            { id: 'p1-wristext', rest: 60, n: 'Band wrist extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Forearm on your thigh, palm down, band under your foot. Lift the back of your hand slowly.' },
         ],
     },
     P2: {
@@ -947,25 +959,26 @@ const TEMPLATES = {
         express: ['p2-warm', 'p2-crimp', 'p2-3fd'], expressMins: 30,
         ex: [
             { id: 'p2-warm', n: 'Finger warm-up', type: 'check', how: 'Easy climbing on big holds, then progressively smaller edges over 15 minutes.' },
-            { id: 'p2-crimp', pat: 'grip', n: 'Full crimp hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Only on fingers your physio has cleared. Follow your current stage in More, under Grip and toe hooks. Let go fully between reps.' },
-            { id: 'p2-3fd', pat: 'grip', n: 'Three-finger drag hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Current stage only. Stop at any ring finger or forearm pain.' },
+            { id: 'p2-crimp', rest: 180, pat: 'grip', n: 'Full crimp hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Only on fingers your physio has cleared. Follow your current stage in More, under Grip and toe hooks. Let go fully between reps.' },
+            { id: 'p2-3fd', rest: 180, pat: 'grip', n: 'Three-finger drag hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Current stage only. Stop at any ring finger or forearm pain.' },
             { id: 'p2-repeaters', pat: 'grip', n: 'Open-hand repeaters', type: 'check', how: 'Half crimp or open hand on an 18–20 mm edge. 7 s on, 53 s off, 5 reps, 3 sets. Bodyweight, sub-maximal.' },
-            { id: 'p2-tindeq', pat: 'grip', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand.' },
-            { id: 'p2-fingerext', n: 'Band finger extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Band around all five fingertips. Open your hand against it slowly.' },
+            { id: 'p2-tindeq', rest: 180, pat: 'grip', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand.' },
+            { id: 'p2-fingerext', rest: 60, n: 'Band finger extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Band around all five fingertips. Open your hand against it slowly.' },
         ],
     },
     P3: {
-        id: 'P3', main: 'grip', name: 'Technique and strength', focus: 'Footwork, moderate problems, legs', color: 'var(--blue)', mins: 70,
+        id: 'P3', pairs: [['p3-rdl', 'p3-pallof']], main: 'grip', name: 'Technique and strength', focus: 'Footwork, moderate problems, legs', color: 'var(--blue)', mins: 70,
         express: ['p3-feet', 'p3-moderate', 'p3-rdl'], expressMins: 35,
         ex: [
             { id: 'p3-feet', pat: 'skill', n: 'Silent feet drill', type: 'check', how: '15 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
             { id: 'p3-tension', pat: ['grip', 'core'], n: 'Steep body tension problems', type: 'check', how: '3–4 problems on steep terrain. Think hips and core, not pulling.' },
             { id: 'p3-moderate', pat: ['grip', 'pull'], n: 'Moderate problems', type: 'check', how: '5–6 new problems a few grades below your max. Read each one first, then climb it.' },
-            { id: 'p3-toehook', pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold. At stage 2, add a slow reach with the opposite arm while holding.' },
-            { id: 'p3-pallof', pat: 'core', n: 'Pallof press', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, harder: 'stand further from the anchor', how: 'Band anchored at chest height, stand side-on. Press straight out and hold 2 seconds, resisting the pull to rotate.' },
-            { id: 'p3-hanghc', pat: ['pull', 'core'], n: 'Dead hang with hamstring curl', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, how: 'Hang from a bar and slowly curl one knee toward your glute, then switch. Core stays tight.' },
-            { id: 'p3-rdl', pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand. Hinge back with a flat back, 3 seconds down.' },
-            { id: 'p3-hamcurl', pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Machine if available, otherwise an ankle weight lying face down. Slow on the way down.' },
+            { id: 'p3-toehook', rest: 60, pat: 'core', n: 'Toe hook hold', type: 'hold', sets: 5, lo: 10, hi: 20, side: true, how: 'Hook a jug or volume at hip height and hold. At stage 2, add a slow reach with the opposite arm while holding.' },
+            { id: 'p3-dorsi', rest: 60, pat: 'legs', n: 'Banded dorsiflexion', type: 'reps', sets: 3, lo: 15, hi: 20, side: true, harder: 'stand further from the anchor, or use a heavier band', how: 'Sit with your leg straight, a band looped round your forefoot and anchored in front of you. Pull your toes and the top of your foot up toward your shin against the band, hold a second at the top, then lower slowly. This is the muscle that actually does the hooking, and it is the one thing the plan was missing for toe hooks.' },
+            { id: 'p3-hanghc', rest: 120, pat: ['pull', 'core'], n: 'Dead hang with hamstring curl', type: 'reps', sets: 3, lo: 8, hi: 10, side: true, how: 'Hang from a bar and slowly curl one knee toward your glute, then switch. Core stays tight.' },
+            { id: 'p3-rdl', rest: 120, pat: 'hinge', n: 'Single-leg Romanian deadlift', type: 'weight', sets: 3, lo: 8, hi: 10, rir: 2, startKg: 12, side: true, how: 'Weight in the opposite hand. Hinge back with a flat back, 3 seconds down.' },
+            { id: 'p3-pallof', rest: 60, pat: 'core', n: 'Pallof press', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, harder: 'stand further from the anchor', how: 'Band anchored at chest height, stand side-on. Press straight out and hold 2 seconds, resisting the pull to rotate.' },
+            { id: 'p3-hamcurl', rest: 120, pat: 'hinge', n: 'Hamstring curl', type: 'weight', sets: 3, lo: 10, hi: 15, rir: 2, startKg: 20, how: 'Machine if available, otherwise an ankle weight lying face down. Slow on the way down.' },
             { id: 'p3-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 90/90 hip switches, active high-step holds and the hip flexor stretch.' },
         ],
     },
@@ -1187,6 +1200,61 @@ const DEFAULT_SETTINGS = {
     tattooStart: null, tattooDays: TATTOO_DEFAULT_DAYS, tattooArea: 'other', modeBefore: null,
     lastBackup: null, dailyHidden: [],
 };
+/* ---------- Supersets: the other half of a pair, when both are in today's session ---------- */
+function partnerId(tpl, exId) {
+    const pairs = (tpl && tpl.pairs) || [];
+    for (let i = 0; i < pairs.length; i++) {
+        if (pairs[i][0] === exId)
+            return pairs[i][1];
+        if (pairs[i][1] === exId)
+            return pairs[i][0];
+    }
+    return null;
+}
+// A pair only counts when both halves are present: the short version drops some exercises.
+function partnerIn(tpl, exId, ids) { const o = partnerId(tpl, exId); return o && ids.indexOf(o) >= 0 ? o : null; }
+function pairGroups(tpl, list) {
+    const ids = list.map((e) => e.id);
+    const used = {};
+    const out = [];
+    list.forEach((e) => {
+        if (used[e.id])
+            return;
+        const o = partnerIn(tpl, e.id, ids);
+        const other = o ? list.find((x) => x.id === o) : null;
+        if (other) {
+            used[e.id] = 1;
+            used[o] = 1;
+            out.push({ pair: true, items: [e, other] });
+        }
+        else {
+            used[e.id] = 1;
+            out.push({ pair: false, items: [e] });
+        }
+    });
+    return out;
+}
+// Alternating a pair turns each long rest into a short switch, which is where the time goes.
+function supersetMins(tpl, list, mins) {
+    const pairs = pairGroups(tpl, list).filter((g) => g.pair);
+    if (!pairs.length)
+        return null;
+    let saved = 0;
+    pairs.forEach((g) => {
+        const sets = Math.min.apply(null, g.items.map((e) => e.sets || 3));
+        const rest = Math.max.apply(null, g.items.map((e) => e.rest || 60));
+        saved += sets * Math.max(0, rest - SUPERSET_REST);
+    });
+    const out = Math.round((mins - saved / 60) / 5) * 5;
+    return out < mins ? Math.max(10, out) : null;
+}
+function fmtRest(sec) {
+    const n = Number(sec) || 0;
+    if (n < 60)
+        return n + ' s';
+    const m = Math.floor(n / 60), r = n % 60;
+    return m + ' min' + (r ? ' ' + r + ' s' : '');
+}
 /* ---------- Short versions: the same session, trimmed to what matters most ---------- */
 function sessionEx(tpl, express) {
     if (!express || !tpl.express)
@@ -2092,7 +2160,7 @@ function SetRow({ ex, st, j, unit, ph, onPatch }) {
         React.createElement("button", { className: "tick", onClick: tick, "aria-label": (st.done ? 'Undo set ' : 'Complete set ') + (j + 1), "aria-pressed": !!st.done },
             React.createElement(IconCheck, { size: 20, sw: 2.6 }))));
 }
-function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPatchSet, onAddSet, onSetUnit, onGuided, guiding }) {
+function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPatchSet, onAddSet, onSetUnit, onGuided, guiding, partner }) {
     const sug = suggestion(ex, last, unit);
     const ph = carryForward(ex, entry, placeholders(ex, last, sug, unit, (entry.sets || []).length), unit);
     const setsDone = (entry.sets || []).filter((s) => s.done).length;
@@ -2107,6 +2175,19 @@ function ExerciseCard({ ex, entry, last, unit, open, onOpen, onToggleDone, onPat
         open ? (React.createElement("div", { className: "ex-body" },
             React.createElement("p", { className: "how" }, ex.how),
             ex.tip ? React.createElement("p", { className: "tip" }, ex.tip) : null,
+            partner ? (React.createElement("p", { className: "small", style: { margin: '0 0 8px', color: 'var(--text)' } },
+                "Superset with ",
+                partner.n,
+                ". ",
+                React.createElement("span", { style: { color: 'var(--muted)' } },
+                    "A set of each, about ",
+                    SUPERSET_REST,
+                    " s between. That way this one still gets its full ",
+                    fmtRest(ex.rest),
+                    "."))) : ex.rest && !ex.rehab ? React.createElement("p", { className: "small", style: { margin: '0 0 8px' } },
+                "Rest ",
+                fmtRest(ex.rest),
+                " between sets.") : null,
             sug ? React.createElement("div", { className: 'sug' + (sug.up ? ' up' : '') }, sug.text) : null,
             ex.type === 'weight' ? (React.createElement("div", { className: "row between", style: { marginTop: 6 } },
                 React.createElement("span", { className: "small" }, "Weight in"),
@@ -2292,7 +2373,7 @@ function GuidedRunner({ ex, fromSet, color, sound, onSetDone, onClose, onNext, n
             React.createElement("button", { className: "btn sm ghost", onClick: onClose }, "Stop"))));
 }
 // Counts down the rest a physio prescribed between sets. Works from a timestamp, so it stays right after the phone locks.
-function RestBar({ rest, color, onClose }) {
+function RestBar({ rest, color, onClose, onNext }) {
     const [now, setNow] = useState(() => Date.now());
     useEffect(() => { const t = setInterval(() => setNow(Date.now()), 250); return () => clearInterval(t); }, []);
     const msLeft = rest.until - now;
@@ -2310,8 +2391,12 @@ function RestBar({ rest, color, onClose }) {
         React.createElement("span", { className: "restbar-fill", style: { width: pct + '%' }, "aria-hidden": "true" }),
         React.createElement("span", { className: "restbar-text" },
             React.createElement("span", { className: "num" }, over ? 'Rest done' : 'Rest ' + mmss(left)),
-            over ? React.createElement("span", { className: "small", style: { color: 'var(--text)' } }, ", next set") : null),
-        React.createElement("button", { className: "btn sm", onClick: onClose }, over ? 'OK' : 'Skip rest')));
+            rest.next ? React.createElement("span", { className: "small", style: { display: 'block', color: 'var(--text)' } },
+                "then ",
+                rest.next)
+                : over ? React.createElement("span", { className: "small", style: { color: 'var(--text)' } }, ", next set") : null),
+        rest.next ? React.createElement("button", { className: "btn sm primary", onClick: onNext }, "Switch") : null,
+        React.createElement("button", { className: "btn sm", onClick: onClose }, over ? 'OK' : rest.next ? 'Stay' : 'Skip rest')));
 }
 /* ---------- Adding an exercise that isn't in the plan ---------- */
 const MEASURE_DEFAULTS = {
@@ -2405,6 +2490,8 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
         setOpenIdx(i);
         setGuided({ i, from: from < 0 ? 0 : from, n: ((guided && guided.n) || 0) + 1 });
     };
+    const ids = session.exercises.map((e) => e.id);
+    const partnerFor = (entry) => { const o = partnerIn(tpl, entry.id, ids); const e = o ? session.exercises.find((x) => x.id === o) : null; return e ? { entry: e, ex: findEx(e), idx: session.exercises.indexOf(e) } : null; };
     const guidedEntry = guided ? session.exercises[guided.i] : null;
     const guidedEx = guidedEntry ? findEx(guidedEntry) : null;
     const nextTimed = guided ? session.exercises.findIndex((e, k) => k > guided.i && !e.done && (findEx(e) || {}).timing) : -1;
@@ -2423,7 +2510,16 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
                 const ex = findEx(entry);
                 if (!ex)
                     return null;
-                return (React.createElement(ExerciseCard, { key: entry.id + '-' + i, ex: ex, entry: entry, last: lastEntryFor(sessions, ex.n, session.id), unit: unitFor(ex), open: openIdx === i, onOpen: () => setOpenIdx(openIdx === i ? -1 : i), onToggleDone: () => { const becomingDone = !entry.done; patchEntry(i, (e) => ({ ...e, done: !e.done })); if (becomingDone && openIdx === i)
+                const mate = partnerFor(entry);
+                // The pair's heading goes above whichever half comes first in the session.
+                const head = mate && mate.idx > i ? (React.createElement("div", { key: 'h' + i, className: "ss-head" },
+                    React.createElement("span", { className: "sstag" }, "Superset"),
+                    React.createElement("span", { className: "small" },
+                        ex.n,
+                        " and ",
+                        mate.ex.n,
+                        ", alternated"))) : null;
+                const card = (React.createElement(ExerciseCard, { key: entry.id + '-' + i, ex: ex, entry: entry, partner: mate ? mate.ex : null, last: lastEntryFor(sessions, ex.n, session.id), unit: unitFor(ex), open: openIdx === i, onOpen: () => setOpenIdx(openIdx === i ? -1 : i), onToggleDone: () => { const becomingDone = !entry.done; patchEntry(i, (e) => ({ ...e, done: !e.done })); if (becomingDone && openIdx === i)
                         setOpenIdx(nextUndone(i)); }, onPatchSet: (j, p) => {
                         const completes = p.done === true && entry.sets.every((st, k) => k === j || st.done);
                         patchEntry(i, (e) => {
@@ -2432,12 +2528,19 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
                         });
                         if (completes)
                             setOpenIdx(nextUndone(i));
-                        // Prescribed rest between sets: the timer starts as you tick a set, and stops once the exercise is finished.
-                        if (p.done === true && ex.rest && !completes)
-                            setRest((r) => ({ until: Date.now() + ex.rest * 1000, total: ex.rest, n: ((r && r.n) || 0) + 1 }));
+                        // In a superset the short switch-over replaces the long rest, because the other
+                        // exercise is what fills it. On its own, the exercise's own rest applies.
+                        const sw = mate && !mate.entry.done;
+                        const secs = sw ? SUPERSET_REST : ex.rest;
+                        if (p.done === true && secs && !(completes && !sw)) {
+                            setRest((r) => ({ until: Date.now() + secs * 1000, total: secs, n: ((r && r.n) || 0) + 1, next: sw ? mate.ex.n : null, to: sw ? mate.idx : null }));
+                        }
                         else if (completes)
                             setRest(null);
                     }, onAddSet: () => patchEntry(i, (e) => ({ ...e, sets: [...e.sets, {}], done: false })), onGuided: () => startGuided(i), guiding: !!guided, onSetUnit: (u) => updateSettings({ exUnits: { ...(settings.exUnits || {}), [ex.n]: u } }) }));
+                return head ? React.createElement("div", { key: 'g' + i, className: "ss-group" },
+                    head,
+                    card) : card;
             })),
             tpl.freeform ? (React.createElement("div", { style: { marginTop: session.exercises.length ? 12 : 4 } },
                 !session.exercises.length ? React.createElement("p", { className: "small", style: { margin: '0 0 10px' } }, "Nothing in it yet. Add exercises as you go, or all at the end.") : null,
@@ -2458,7 +2561,8 @@ function ActiveSession({ session, ctx, onFinish, onDiscard }) {
         guided && guidedEx ? (React.createElement(GuidedRunner, { key: guided.n, ex: guidedEx, fromSet: guided.from, color: tpl.color, sound: settings.sound, nextName: nextTimed >= 0 ? session.exercises[nextTimed].name : null, onSetDone: (j) => tickSet(guided.i, j), onNext: () => { if (nextTimed >= 0)
                 startGuided(nextTimed);
             else
-                setGuided(null); }, onClose: () => { setGuided(null); setOpenIdx(nextUndone(guided.i - 1)); } })) : rest ? React.createElement(RestBar, { key: rest.n, rest: rest, color: tpl.color, onClose: () => setRest(null) }) : null));
+                setGuided(null); }, onClose: () => { setGuided(null); setOpenIdx(nextUndone(guided.i - 1)); } })) : rest ? React.createElement(RestBar, { key: rest.n, rest: rest, color: tpl.color, onClose: () => setRest(null), onNext: () => { if (rest.to != null)
+                setOpenIdx(rest.to); setRest(null); } }) : null));
 }
 const PAIN_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 function FinishSheet({ session, onSave, onClose }) {
@@ -2879,9 +2983,19 @@ function TodayView({ ctx }) {
                             "Short ",
                             tpl.expressMins,
                             "m")))) : null,
-                tpl.freeform ? React.createElement("p", { className: "small", style: { margin: '10px 0 14px' } }, tpl.note) : (React.createElement("ul", { className: "plan-list" }, sessionEx(tpl, settings.express).map((ex) => React.createElement("li", { key: ex.id },
+                tpl.freeform ? React.createElement("p", { className: "small", style: { margin: '10px 0 14px' } }, tpl.note) : (React.createElement("ul", { className: "plan-list" }, pairGroups(tpl, sessionEx(tpl, settings.express)).map((g, gi) => (g.pair ? [
+                    React.createElement("li", { key: 'h' + gi, className: "ss-row" },
+                        React.createElement("span", { className: "sstag" }, "Superset"),
+                        React.createElement("span", { className: "scheme" },
+                            "alternate, ",
+                            SUPERSET_REST,
+                            " s")),
+                    ...g.items.map((ex) => React.createElement("li", { key: ex.id, className: "ss-item" },
+                        React.createElement("span", null, ex.n),
+                        React.createElement("span", { className: "scheme" }, shortScheme(ex)))),
+                ] : g.items.map((ex) => React.createElement("li", { key: ex.id },
                     React.createElement("span", null, ex.n),
-                    React.createElement("span", { className: "scheme" }, shortScheme(ex)))))),
+                    React.createElement("span", { className: "scheme" }, shortScheme(ex)))))))),
                 React.createElement("button", { className: "btn primary block", onClick: () => start(templateId) },
                     "Start ",
                     tpl.name),
@@ -2891,7 +3005,9 @@ function TodayView({ ctx }) {
                 React.createElement("p", { className: "small", style: { margin: '2px 0 0' } },
                     "About ",
                     sessionMins(tpl, settings.express),
-                    " minutes.",
+                    " minutes",
+                    (() => { const m = supersetMins(tpl, sessionEx(tpl, settings.express), sessionMins(tpl, settings.express)); return m ? ', or about ' + m + ' supersetting' : ''; })(),
+                    ".",
                     settings.express && tpl.express ? ' A short session you actually do beats a full one you skip.' : '',
                     " ",
                     tpl.noStraps ? '' : STRAP_RULE))))),
@@ -3400,7 +3516,12 @@ function LibraryView({ ctx, onBack }) {
                         React.createElement("div", { style: { fontWeight: 600 } }, ex.n),
                         React.createElement("div", { className: "small" },
                             scheme(ex),
-                            ex.startKg ? '. Start around ' + bothUnits(ex.startKg, ctx.settings.defaultUnit) + (ex.perHand ? ' per hand' : '') : ''),
+                            ex.startKg ? '. Start around ' + bothUnits(ex.startKg, ctx.settings.defaultUnit) + (ex.perHand ? ' per hand' : '') : '',
+                            (() => { const o = partnerId(t, ex.id); const m = o && t.ex.find((x) => x.id === o); return m ? React.createElement("span", { style: { color: 'var(--teal)' } },
+                                ". Superset with ",
+                                m.n) : ex.rest && !ex.rehab ? React.createElement("span", null,
+                                ". Rest ",
+                                fmtRest(ex.rest)) : null; })()),
                         React.createElement("p", { className: "how", style: { marginTop: 4 } }, ex.how),
                         ex.tip ? React.createElement("p", { className: "tip" }, ex.tip) : null))) : null));
             }))))));
@@ -3419,7 +3540,7 @@ function GripView({ onBack }) {
         React.createElement("h2", { className: "h2" }, "Toe hooks"),
         React.createElement("p", { className: "small" }, "Trains out the hook opening when you reach with the opposite hand. Stage 2 targets that directly. No finger load involved, so it\u2019s fine during the rebuild."),
         React.createElement(StageList, { items: TOE_HOOK_STAGES }),
-        React.createElement("p", { className: "small" }, "Supporting strength lives in your sessions: seated toe curl holds in Session A, hamstring curls in Session B."),
+        React.createElement("p", { className: "small" }, "A toe hook is dorsiflexion: you pull the top of your foot up toward your shin and drag your leg back. So the supporting strength is banded dorsiflexion in Session B, which is the muscle doing the hooking, and hamstring curls, also in Session B, which drive the pull-back. Seated toe curl holds in Session A work the underside of the foot instead: they are for standing on small edges, not for hooking."),
         React.createElement("h2", { className: "h2", style: { marginTop: 20 } }, "Full crimp"),
         React.createElement("p", { className: "note warn" }, "Only for fingers a physio has cleared. The injured finger, and any finger you haven\u2019t had examined, stays at stage 0, apart from what your physio prescribes."),
         React.createElement(StageList, { items: GRIP_STAGES.crimp }),
