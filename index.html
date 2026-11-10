@@ -466,8 +466,8 @@ function(a,b,c){if(!Vd(b))throw Error(m(200));return Wd(null,a,b,!1,c)};Q.unmoun
    No personal or medical details live in this code. Everything about the person using it
    (injuries, logs, check-ins, notes) is stored only on their own device. */
 const { useState, useEffect, useRef, useCallback } = React;
-const APP_VERSION = '3.7';
-const APP_BUILD = '2026-10-22';
+const APP_VERSION = '3.10';
+const APP_BUILD = '2026-11-09';
 const NS = 'tc3:';
 const OLD_NS = 'training-companion:';
 /* ---------- Dates: always the phone's LOCAL calendar date, never UTC ---------- */
@@ -642,6 +642,11 @@ const MODES = {
         desc: 'Physio-cleared return: easy climbing on big holds plus your strength sessions.',
         templates: ['R1', 'A', 'B', 'C'],
     },
+    build: {
+        name: 'Back to bouldering',
+        desc: 'Climbing is the main event again: real try-hard sessions on the holds your finger takes, with crimps staged back in.',
+        templates: ['L1', 'V1', 'B'],
+    },
     full: {
         name: 'Full training',
         desc: 'The complete climbing plan: power endurance first, then grip positions, technique and outdoor.',
@@ -773,7 +778,7 @@ const STRAP_RULE = 'Use lifting straps or wrist hooks for every pull and any wei
    They never suggest going up and never count as personal bests; the physio decides progressions. */
 const TEMPLATES = {
     A: {
-        id: 'A', pairs: [['a-goblet', 'a-pushup'], ['a-bss', 'a-ohp'], ['a-dips', 'a-wheel'], ['a-cph', 'a-toecurl']], main: 'legs', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
+        id: 'A', needsGym: true, pairs: [['a-goblet', 'a-pushup'], ['a-bss', 'a-ohp'], ['a-dips', 'a-wheel'], ['a-cph', 'a-toecurl']], main: 'legs', name: 'Session A', focus: 'Legs, pushing and core', color: 'var(--teal)', mins: 60,
         express: ['a-warm', 'a-goblet', 'a-bss', 'a-pushup', 'a-wheel'], expressMins: 28,
         ex: [
             { id: 'a-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 10 scap settings, 15 band external rotations per arm and 10 leg swings per side.' },
@@ -788,7 +793,7 @@ const TEMPLATES = {
         ],
     },
     B: {
-        id: 'B', pairs: [['b-rdl', 'b-toehook'], ['b-pullup', 'b-hamcurl'], ['b-lockoff', 'b-deadbug'], ['b-row', 'b-lsit'], ['b-backext', 'b-dorsi']], main: 'pull', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
+        id: 'B', needsGym: true, pairs: [['b-rdl', 'b-toehook'], ['b-pullup', 'b-hamcurl'], ['b-lockoff', 'b-deadbug'], ['b-row', 'b-lsit'], ['b-backext', 'b-dorsi']], main: 'pull', name: 'Session B', focus: 'Hinge, strap pulling and core', color: 'var(--ochre)', mins: 60,
         express: ['b-warm', 'b-rdl', 'b-pullup', 'b-row', 'b-backext'], expressMins: 28,
         ex: [
             { id: 'b-warm', n: 'Warm-up', type: 'check', how: '5 min easy bike or brisk walk, then 15 band pull-aparts, 8 scap pull-ups in straps and 10 bodyweight hip hinges.' },
@@ -810,7 +815,7 @@ const TEMPLATES = {
         ex: [
             { id: 'c-intervals', pat: 'cardio', n: 'Intervals', type: 'time', target: 22, how: 'Bike, run or incline walk. Skip the rower, it’s a grip exercise. 10–12 rounds of 1 minute hard and 1 minute easy. You should be breathing hard by round three. Every other week, swap for 40 minutes steady.' },
             { id: 'c-mobility', pat: 'mobility', n: 'Hip mobility circuit', type: 'check', how: 'Cossack squat holds, 3 × 10–15 s per side.\n90/90 hip switches, 3 × 8.\nActive high-step holds, 3 × 8 s per leg.\nHip flexor stretch, 2 × 45 s per side.\nBand clamshells, 3 × 15 per side.' },
-            { id: 'c-movement', pat: 'skill', n: 'Movement drills', type: 'check', how: 'Routine A or B from More, under Movement drills. Crawls use flat hands with fingers spread, so your fingers stay unloaded.' },
+            { id: 'c-movement', pat: 'skill', n: 'Movement drills', type: 'check', how: 'Routine A or B from More, under Movement drills, where each one has an animation showing which way it goes. The crawls travel: 10 m a rep forward, 8 m backward for the bear crawl, and 8 m each way for the crab walk. Shuttle 5 m out and back if you haven\u2019t the floor space. Only the bird dog is done on the spot. Crawls use flat hands with fingers spread, so your fingers stay unloaded.' },
             { id: 'c-visual', pat: 'skill', n: 'Visualization', type: 'check', how: '5 minutes. Rehearse one project or comp problem in detail: each hold, your body position and your breathing on the crux.' },
         ],
     },
@@ -830,7 +835,7 @@ const TEMPLATES = {
         ],
     },
     CORE: {
-        id: 'CORE', pairs: [['k-deadbug', 'k-backext']], main: 'core', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
+        id: 'CORE', needsGym: true, pairs: [['k-deadbug', 'k-backext']], main: 'core', name: 'Core', focus: 'Trunk strength, anti-rotation and back', color: 'var(--plum)', mins: 30,
         express: ['k-deadbug', 'k-wheel', 'k-backext'], expressMins: 15,
         ex: [
             { id: 'k-deadbug', rest: 60, pat: 'core', n: 'Rotational dead bug', type: 'reps', sets: 3, lo: 8, hi: 12, side: true, harder: 'add a 2 second pause at full reach', how: 'On your back, reach one arm and the opposite leg long while rotating toward the working side.' },
@@ -854,7 +859,7 @@ const TEMPLATES = {
             { id: 'fr-bloc', pat: 'grip', n: 'Single-finger crimp bloc lifts', type: 'weight', sets: 3, lo: 3, hi: 3, rest: 60, rehab: true, timing: { work: 10, between: 3, reps: 3, cue: 'Lift' },
                 dose: '3 sets of 3 × 10 s holds, 1 min rest between sets', short: '3 × 3 × 10 s',
                 how: '15 mm or bigger edge. Crimp the bloc with one finger and lift the load just clear of the floor. Each set is three 10-second holds. Rest 1 minute between sets. Log the load and how many holds you did.',
-                tip: 'Load guide: as close as you can to 50% of that finger’s previous figure, building toward 80% of the same finger on your good hand. If your physio gave you a load, use theirs.' },
+                tip: 'Load guide: as close as you can to 50% of that finger’s previous figure, building toward 80% of the same finger on your good hand. If your physio gave you a load, use theirs. A force gauge earns its place here: not for testing yourself, but for holding the prescribed load exactly instead of guessing at how heavy a bag is.' },
             { id: 'fr-traverse', pat: 'grip', n: 'Spray wall traversing', type: 'hold', sets: 3, lo: 60, hi: 60, rest: 120, rehab: true, timing: { work: 60, between: 0, reps: 1, cue: 'Traverse' },
                 dose: '3 × 60 s, 2 min rest between sets', short: '3 × 60 s',
                 how: 'Good handholds and good footholds only. Keep moving for 60 seconds, then rest 2 minutes.' },
@@ -931,8 +936,44 @@ const TEMPLATES = {
         note: 'Add what you actually did. Whatever you log counts toward your week and your training load, and the app reads the movements so tomorrow’s suggestion knows what you’ve already covered.',
         ex: [],
     },
+    HOTEL: {
+        id: 'HOTEL', name: 'Away from the gym', focus: 'Bodyweight, in whatever space you have', color: 'var(--sage)', mins: 30,
+        express: ['h-squat', 'h-pushup', 'h-hollow'], expressMins: 15, noStraps: true,
+        note: 'Nothing here needs more than a floor. It holds on to what you have while you\u2019re away; it isn\u2019t meant to build anything.',
+        ex: [
+            { id: 'h-warm', n: 'Warm-up', type: 'check', how: '3 minutes of easy movement, 10 leg swings per side, 10 arm circles each way.' },
+            { id: 'h-squat', rest: 60, pat: 'legs', n: 'Bodyweight squat', type: 'reps', sets: 3, lo: 15, hi: 20, how: 'Three seconds down, pause at the bottom, stand up smoothly. Slowed down like that, bodyweight is enough.' },
+            { id: 'h-split', rest: 60, pat: 'legs', n: 'Split squat', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, harder: 'rear foot up on the bed', how: 'Rear foot on the floor, hands on your hips, controlled. Put the rear foot on the bed to make it harder.' },
+            { id: 'h-pushup', rest: 60, pat: 'push', n: 'Push-up', type: 'reps', sets: 3, lo: 10, hi: 15, harder: 'feet up on the bed or a chair', how: 'Palms flat, body in one line, chest to the floor.' },
+            { id: 'h-bridge', rest: 60, pat: 'hinge', n: 'Single-leg glute bridge', type: 'reps', sets: 3, lo: 10, hi: 12, side: true, how: 'One foot planted, the other knee to your chest. Drive through the heel and squeeze at the top.' },
+            { id: 'h-hollow', rest: 60, pat: 'core', n: 'Hollow hold', type: 'hold', sets: 3, lo: 20, hi: 30, how: 'Arms overhead and clear of the floor, legs low, lower back pressed into the floor.' },
+        ],
+    },
+    L1: {
+        id: 'L1', noStraps: true, main: 'grip', name: 'Limit bouldering', focus: 'Hard attempts on the holds your finger takes', color: 'var(--rust)', mins: 75,
+        express: ['l1-warm', 'l1-limit'], expressMins: 45,
+        note: 'This is the session that actually makes you better. Do it fresh, early in the week, and keep it short.',
+        ex: [
+            { id: 'l1-warm', n: 'Warm-up', type: 'check', how: '5 min easy cardio, 10 scap settings, 15 band external rotations per arm, 10 tendon glides.\nThen 15 minutes of climbing building from jugs up to about two grades below your limit.\nDon\u2019t skip it. The first hard pull of the day should never be a cold one.' },
+            { id: 'l1-limit', pat: ['grip', 'pull'], n: 'Limit attempts', type: 'time', target: 45, rest: 240,
+              how: 'Six to ten problems at or just above your limit. Three to five minutes between every single go: a rushed go is a wasted go, and under-resting turns this into power endurance, which is not what you came for.\nOpen hand, slopers, pinches, jugs and volumes. If the only way through a move is a small crimp, pick a different problem rather than a different grip.',
+              tip: 'Stop when the quality drops, not when the time runs out. Forty hard minutes beats two mediocre hours.' },
+            { id: 'l1-down', pat: 'skill', n: 'Easy down-climb', type: 'check', how: 'Ten minutes of easy traversing and down-climbing to flush the forearms, then go home.' },
+        ],
+    },
+    V1: {
+        id: 'V1', noStraps: true, main: 'grip', name: 'Volume and technique', focus: 'Mileage, footwork and movement quality', color: 'var(--blue)', mins: 70,
+        express: ['v1-warm', 'v1-volume'], expressMins: 40,
+        note: 'Easy enough to think. If you\u2019re gripping hard, you\u2019re climbing too hard for this one.',
+        ex: [
+            { id: 'v1-warm', n: 'Warm-up', type: 'check', how: 'Same as limit bouldering, but shorter. You\u2019re nowhere near your limit today.' },
+            { id: 'v1-volume', pat: ['grip', 'pull'], n: 'Moderate mileage', type: 'time', target: 35, how: '20 to 30 problems, two to four grades below your limit, open hand throughout.\nClimb them well rather than quickly: every move deliberate, no cutting loose unless the move genuinely asks for it.' },
+            { id: 'v1-feet', pat: 'skill', n: 'Silent feet drill', type: 'check', how: '10 minutes on easy terrain. Place every foot without a sound. If you hear it land, redo the move.' },
+            { id: 'v1-weak', pat: 'skill', n: 'One weakness', type: 'check', how: 'Pick a single thing you avoid \u2014 slopers, steep ground, slabs, heel hooks, dynos \u2014 and give it 15 minutes. A different one each week. Write which one in the session notes.' },
+        ],
+    },
     R1: {
-        id: 'R1', main: 'grip', name: 'Easy climbing', focus: 'Big holds, open hand, finger taped', color: 'var(--gold)', mins: 60,
+        id: 'R1', noStraps: true, main: 'grip', name: 'Easy climbing', focus: 'Big holds, open hand, finger taped', color: 'var(--gold)', mins: 60,
         express: ['rc-warm', 'rc-volume'], expressMins: 32,
         ex: [
             { id: 'rc-warm', n: 'Warm-up', type: 'check', how: '5 min easy cardio, then 10 scap settings, 15 band external rotations per arm and 10 tendon glides.' },
@@ -962,7 +1003,7 @@ const TEMPLATES = {
             { id: 'p2-crimp', rest: 180, pat: 'grip', n: 'Full crimp hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Only on fingers your physio has cleared. Follow your current stage in More, under Grip and toe hooks. Let go fully between reps.' },
             { id: 'p2-3fd', rest: 180, pat: 'grip', n: 'Three-finger drag hold', type: 'hold', sets: 5, lo: 7, hi: 10, how: 'Current stage only. Stop at any ring finger or forearm pain.' },
             { id: 'p2-repeaters', pat: 'grip', n: 'Open-hand repeaters', type: 'check', how: 'Half crimp or open hand on an 18–20 mm edge. 7 s on, 53 s off, 5 reps, 3 sets. Bodyweight, sub-maximal.' },
-            { id: 'p2-tindeq', rest: 180, pat: 'grip', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand.' },
+            { id: 'p2-tindeq', rest: 180, pat: 'grip', n: 'Tindeq pull test', type: 'metric', sets: 2, labels: ['L', 'R'], how: 'After warming up, one maximal open-hand pull per hand on a 20 mm edge. Log the peak for each hand. Skip this entirely while any finger is still symptomatic: a maximal pull on healing tissue costs more than the number is worth.' },
             { id: 'p2-fingerext', rest: 60, n: 'Band finger extension', type: 'reps', sets: 2, lo: 15, hi: 20, how: 'Band around all five fingertips. Open your hand against it slowly.' },
         ],
     },
@@ -1080,74 +1121,82 @@ const MOVEMENT_LINKS = [
     { label: 'Modus Athletica movement resources', url: 'https://www.modusathletica.com/' },
 ];
 const MOVEMENT_DRILLS = [
-    { id: 'contra', name: 'Contralateral crawl', illus: 'contra', dose: '3 × 10 m', steps: 'Hands and feet on the floor, knees just off the ground.\nMove your right hand and left foot together, then left hand and right foot.\nHips low and steady.', why: 'Reinforces the diagonal coordination you use most on the wall.' },
-    { id: 'ipsi', name: 'Same-side crawl', illus: 'ipsi', dose: '3 × 10 m', steps: 'Same position.\nMove your right hand and right foot together, then left and left.\nIt feels awkward at first, which is the point.', why: 'Builds a pattern climbing rarely trains, which helps on odd sequences and drop-knees.' },
-    { id: 'crab', name: 'Crab walk', illus: 'crab', dose: '3 × 8 m each direction', steps: 'Sit, hands and feet on the floor, lift your hips.\nWalk forward, backward and sideways.\nCore on the whole time.', why: 'Shoulder stability and core-to-limb connection for steep terrain.' },
-    { id: 'bear', name: 'Backward bear crawl', illus: 'bear', dose: '3 × 8 m', steps: 'Hands and feet down, hips up, knees hovering.\nCrawl backward, opposite hand and foot together.\nSlow and controlled.', why: 'Control and body awareness for down-climbing and controlled moves.' },
-    { id: 'birddog', name: 'Same-side bird dog', illus: 'birddog', dose: '3 × 8 each side', steps: 'On hands and knees, hands under shoulders.\nReach your right arm and right leg out together.\nHold 3 seconds, return, switch sides.', why: 'A hard balance and anti-rotation challenge for off-balance moves.' },
+    { id: 'contra', travel: 'Forward, 10 m a rep', name: 'Contralateral crawl', illus: 'contra', dose: '3 × 10 m', steps: 'Hands and feet on the floor, knees just off the ground.\nMove your right hand and left foot together, then left hand and right foot.\nHips low and steady.', why: 'Reinforces the diagonal coordination you use most on the wall.' },
+    { id: 'ipsi', travel: 'Forward, 10 m a rep', name: 'Same-side crawl', illus: 'ipsi', dose: '3 × 10 m', steps: 'Same position.\nMove your right hand and right foot together, then left and left.\nIt feels awkward at first, which is the point.', why: 'Builds a pattern climbing rarely trains, which helps on odd sequences and drop-knees.' },
+    { id: 'crab', travel: 'Forward, back and both sides, 8 m each', name: 'Crab walk', illus: 'crab', dose: '3 × 8 m each direction', steps: 'Sit, hands and feet on the floor, lift your hips.\nWalk forward, backward and sideways.\nCore on the whole time.', why: 'Shoulder stability and core-to-limb connection for steep terrain.' },
+    { id: 'bear', travel: 'Backward, 8 m a rep', name: 'Backward bear crawl', illus: 'bear', dose: '3 × 8 m', steps: 'Hands and feet down, hips up, knees hovering.\nCrawl backward, opposite hand and foot together.\nSlow and controlled.', why: 'Control and body awareness for down-climbing and controlled moves.' },
+    { id: 'birddog', travel: 'On the spot', name: 'Same-side bird dog', illus: 'birddog', dose: '3 × 8 each side', steps: 'On hands and knees, hands under shoulders.\nReach your right arm and right leg out together.\nHold 3 seconds, return, switch sides.', why: 'A hard balance and anti-rotation challenge for off-balance moves.' },
 ];
 const MOVEMENT_ROUTINES = [
     { id: 'A', label: 'Routine A', mins: 5, drills: ['contra', 'birddog'] },
     { id: 'B', label: 'Routine B', mins: 6, drills: ['ipsi', 'crab', 'bear'] },
 ];
-function DrillIllustration({ type }) {
-    const s = 'var(--text)', a = 'var(--teal)', b = 'var(--ochre)';
-    const L = (x1, y1, x2, y2, c, w, o) => React.createElement("line", { x1: x1, y1: y1, x2: x2, y2: y2, stroke: c, strokeWidth: w || 4, strokeLinecap: "round", opacity: o || 1 });
-    const D = (cx, cy, c, r, o) => React.createElement("circle", { cx: cx, cy: cy, r: r || 4, fill: c, opacity: o || 1 });
-    const head = (cx, cy) => React.createElement("circle", { cx: cx, cy: cy, r: "8", fill: "none", stroke: s, strokeWidth: "3" });
-    const figs = {
-        contra: (React.createElement("g", null,
-            L(60, 90, 120, 90, s),
-            head(130, 85),
-            L(118, 90, 145, 70, a),
-            D(145, 70, a),
-            L(118, 90, 105, 120, s),
-            D(105, 120, s),
-            L(62, 90, 35, 72, a),
-            D(35, 72, a),
-            L(62, 90, 75, 122, s),
-            D(75, 122, s))),
-        ipsi: (React.createElement("g", null,
-            L(60, 90, 120, 90, s),
-            head(130, 85),
-            L(118, 90, 145, 70, b),
-            D(145, 70, b),
-            L(118, 90, 105, 120, s),
-            D(105, 120, s),
-            L(62, 90, 88, 70, b),
-            D(88, 70, b),
-            L(62, 90, 50, 122, s),
-            D(50, 122, s))),
-        crab: (React.createElement("g", null,
-            L(55, 105, 115, 80, s),
-            head(120, 76),
-            L(57, 103, 45, 128, a),
-            D(45, 128, a),
-            L(113, 82, 130, 128, a),
-            D(130, 128, a))),
-        bear: (React.createElement("g", null,
-            L(60, 95, 120, 80, s),
-            head(128, 78),
-            L(118, 82, 112, 118, b),
-            D(112, 118, b),
-            L(62, 93, 55, 120, b),
-            D(55, 120, b),
-            React.createElement("polygon", { points: "25,55 15,60 25,65", fill: s }),
-            L(45, 60, 25, 60, s, 2))),
-        birddog: (React.createElement("g", null,
-            L(55, 95, 115, 95, s),
-            head(122, 90),
-            L(65, 95, 65, 128, s, 3, 0.5),
-            D(65, 128, s, 3, 0.5),
-            L(105, 95, 105, 128, s, 3, 0.5),
-            D(105, 128, s, 3, 0.5),
-            L(112, 94, 140, 80, a),
-            D(140, 80, a),
-            L(58, 96, 30, 105, a),
-            D(30, 105, a))),
-    };
+/* ---------- Animated drill figures ----------
+   SMIL rather than CSS transforms: animateTransform takes its own rotation centre, so there's
+   no transform-origin guesswork in Safari. Reduced motion falls back to a still mid-stride pose.
+   The ground dashes travel, or don't, which is the quickest way to show whether a drill moves. */
+function prefersReducedMotion() {
+    try {
+        return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    }
+    catch (e) {
+        return false;
+    }
+}
+const DRILL_DUR = 1.8;
+// Each limb: where it pivots, where it reaches to, and which half of the cycle it's on.
+const DRILL_FIGURES = {
+    contra: { travel: -1, limbs: [
+            { p: [118, 86], to: [16, 42], ph: 'b', dim: true }, { p: [64, 86], to: [-18, 42], ph: 'a', dim: true },
+            { p: [118, 86], to: [16, 42], ph: 'a' }, { p: [64, 86], to: [-18, 42], ph: 'b' },
+        ] },
+    ipsi: { travel: -1, limbs: [
+            { p: [118, 86], to: [16, 42], ph: 'b', dim: true }, { p: [64, 86], to: [-18, 42], ph: 'b', dim: true },
+            { p: [118, 86], to: [16, 42], ph: 'a' }, { p: [64, 86], to: [-18, 42], ph: 'a' },
+        ] },
+    bear: { travel: 1, limbs: [
+            { p: [118, 86], to: [16, 42], ph: 'b', dim: true }, { p: [64, 86], to: [-18, 42], ph: 'a', dim: true },
+            { p: [118, 86], to: [16, 42], ph: 'a' }, { p: [64, 86], to: [-18, 42], ph: 'b' },
+        ] },
+    crab: { travel: -1, belly: true, limbs: [
+            { p: [74, 94], to: [-16, 34], ph: 'b', dim: true }, { p: [112, 94], to: [16, 34], ph: 'a', dim: true },
+            { p: [74, 94], to: [-16, 34], ph: 'a' }, { p: [112, 94], to: [16, 34], ph: 'b' },
+        ] },
+    // Head tucked under the torso, because in a bird dog you're looking at the floor, and it
+    // keeps the reaching arm clear of it. The fold angles put both limbs back on the ground.
+    birddog: { travel: 0, kneel: true, head: [126, 94], limbs: [
+            { p: [118, 86], to: [34, -16], ph: 'reach', fold: 105 },
+            { p: [64, 86], to: [-36, 14], ph: 'reach', fold: -60 },
+        ] },
+};
+function DrillLimb({ limb, still }) {
+    const [cx, cy] = limb.p;
+    const end = [cx + limb.to[0], cy + limb.to[1]];
+    const swing = 15;
+    const vals = limb.ph === 'a' ? [-swing, swing, -swing] : limb.ph === 'b' ? [swing, -swing, swing] : null;
+    const rot = (deg) => deg + ' ' + cx + ' ' + cy;
+    return (React.createElement("g", null,
+        still || !vals ? null : (React.createElement("animateTransform", { attributeName: "transform", type: "rotate", dur: DRILL_DUR + 's', values: vals.map(rot).join(';'), calcMode: "spline", keyTimes: "0;0.5;1", keySplines: ".42 0 .58 1;.42 0 .58 1", repeatCount: "indefinite" })),
+        still || limb.ph !== 'reach' ? null : (React.createElement("animateTransform", { attributeName: "transform", type: "rotate", dur: DRILL_DUR * 2 + 's', values: [limb.fold, 0, 0, limb.fold].map(rot).join(';'), keyTimes: "0;0.25;0.75;1", calcMode: "spline", keySplines: ".4 0 .2 1;0 0 1 1;.4 0 .2 1", repeatCount: "indefinite" })),
+        React.createElement("line", { x1: cx, y1: cy, x2: end[0], y2: end[1], stroke: limb.ph === 'reach' ? 'var(--teal)' : 'var(--text)', strokeWidth: limb.dim ? 3.5 : 4.5, strokeLinecap: "round", opacity: limb.dim ? 0.4 : 1 }),
+        React.createElement("circle", { cx: end[0], cy: end[1], r: limb.dim ? 3 : 4, fill: limb.ph === 'reach' ? 'var(--teal)' : 'var(--text)', opacity: limb.dim ? 0.4 : 1 })));
+}
+function DrillIllustration({ type, still }) {
+    const fig = DRILL_FIGURES[type];
+    const frozen = still || prefersReducedMotion();
+    if (!fig)
+        return null;
+    const headAt = fig.head || (fig.belly ? [62, 88] : [132, 82]);
+    const torso = fig.belly ? [72, 94, 114, 94] : [62, 86, 122, 86];
     return (React.createElement("div", { className: "illus" },
-        React.createElement("svg", { viewBox: "0 0 180 150", width: "150", height: "125", role: "img", "aria-label": "Body position diagram" }, figs[type] || null)));
+        React.createElement("svg", { viewBox: "0 0 180 150", width: "100%", style: { maxWidth: 300 }, role: "img", "aria-label": 'Animated diagram: ' + type + (fig.travel ? ', travelling' : ', on the spot') },
+            React.createElement("line", { x1: "0", y1: "130", x2: "180", y2: "130", stroke: "var(--line)", strokeWidth: "2", strokeDasharray: "10 8", strokeLinecap: "round" }, frozen || !fig.travel ? null : (React.createElement("animate", { attributeName: "stroke-dashoffset", from: "0", to: 18 * fig.travel, dur: "1.1s", repeatCount: "indefinite" }))),
+            fig.kneel ? (React.createElement("g", { opacity: "0.45" },
+                React.createElement("line", { x1: "118", y1: "86", x2: "122", y2: "128", stroke: "var(--text)", strokeWidth: "3.5", strokeLinecap: "round" }),
+                React.createElement("line", { x1: "64", y1: "86", x2: "58", y2: "128", stroke: "var(--text)", strokeWidth: "3.5", strokeLinecap: "round" }))) : null,
+            React.createElement("line", { x1: torso[0], y1: torso[1], x2: torso[2], y2: torso[3], stroke: "var(--text)", strokeWidth: "5", strokeLinecap: "round" }),
+            React.createElement("circle", { cx: headAt[0], cy: headAt[1], r: "8", fill: "none", stroke: "var(--text)", strokeWidth: "3" }),
+            fig.limbs.map((l, i) => React.createElement(DrillLimb, { key: i, limb: l, still: frozen })))));
 }
 /* ---------- Shoulder and neck rehab, all in one place ---------- */
 const SHOULDER_PLAN = [
@@ -1198,8 +1247,39 @@ const DEFAULT_SETTINGS = {
     rehabReminderDays: [1, 3, 5], rehabReminderTime: '17:30', dailyReminderTime: '20:00', dailyReminderOn: true,
     express: false, dailyShort: false, sound: true,
     tattooStart: null, tattooDays: TATTOO_DEFAULT_DAYS, tattooArea: 'other', modeBefore: null,
+    modeSince: null, modeReviewSnooze: null, gripStage: 0, gripStageSince: null,
+    settingDates: [], away: null,
     lastBackup: null, dailyHidden: [],
 };
+
+/* ---------- How long the current plan has been running ----------
+   A plan written for an injury you had in September shouldn't still be running in November
+   without anyone asking. If the date was never recorded, fall back to the oldest session
+   logged under this mode, so an existing plan still gets reviewed. */
+const MODE_REVIEW_DAYS = 28;
+function modeAge(settings, sessions, ds) {
+    let since = settings.modeSince;
+    if (!since) {
+        const own = (sessions || []).filter((x) => x.mode === settings.mode && x.date).map((x) => x.date).sort();
+        since = own[0] || null;
+    }
+    if (!since || since > ds) return null;
+    const days = daysBetween(since, ds);
+    return { since, days, weeks: Math.floor(days / 7), due: days >= MODE_REVIEW_DAYS };
+}
+
+/* ---------- Crimping, staged back in ----------
+   The ladder already lived in the guides. This makes it a thing with a date on it, so it
+   moves instead of sitting at stage 0 for months. */
+const CRIMP_HOLD_DAYS = [14, 14, 14, 14, 0];
+function crimpStage(settings, ds) {
+    const i = Math.max(0, Math.min(GRIP_STAGES.crimp.length - 1, Number(settings.gripStage) || 0));
+    const stage = GRIP_STAGES.crimp[i];
+    const since = settings.gripStageSince || settings.modeSince || null;
+    const days = since && since <= ds ? daysBetween(since, ds) : null;
+    const hold = CRIMP_HOLD_DAYS[i];
+    return { i, stage, since, days, hold, last: i >= GRIP_STAGES.crimp.length - 1, ready: hold > 0 && days !== null && days >= hold };
+}
 /* ---------- Supersets: the other half of a pair, when both are in today's session ---------- */
 function partnerId(tpl, exId) {
     const pairs = (tpl && tpl.pairs) || [];
@@ -1309,17 +1389,32 @@ function climbVolumeText(v) {
     return t;
 }
 /* ---------- Day type: setting days are a schedule you can override for any single day ---------- */
+/* A month with two shifts in it can't be written as a repeating weekday, so dates and the
+   weekly pattern both count. Clear the weekday list and the dates stand on their own. */
+function isSettingScheduled(ds, settings) {
+    return (settings.settingDates || []).indexOf(ds) >= 0 || (settings.settingDays || []).indexOf(dowOf(ds)) >= 0;
+}
+// Away from your gym: the equipment sessions don't apply, and a thin week isn't a failure.
+function isAway(ds, settings) {
+    const a = settings.away;
+    return !!(a && a.from && a.to && ds >= a.from && ds <= a.to);
+}
+function awayLeft(ds, settings) {
+    const a = settings.away;
+    if (!a || !a.to) return null;
+    return { from: a.from, to: a.to, days: daysBetween(ds, a.to) + 1, over: ds > a.to, day: daysBetween(a.from, ds) + 1, total: daysBetween(a.from, a.to) + 1 };
+}
 function dayTypeFor(ds, settings, plans) {
     const p = plans && plans[ds];
     if (p && p.dayType)
         return p.dayType;
-    return (settings.settingDays || []).indexOf(dowOf(ds)) >= 0 ? 'setting' : 'train';
+    return isSettingScheduled(ds, settings) ? 'setting' : 'train';
 }
 // 'logged' = shift logged, 'skipped' = scheduled but marked as not set, 'scheduled' = scheduled and unconfirmed, 'none' = not a setting day.
 function settingStatus(ds, sessions, settings, plans) {
     if (sessions.some((s) => s.kind === 'setting' && s.date === ds))
         return 'logged';
-    const scheduled = (settings.settingDays || []).indexOf(dowOf(ds)) >= 0;
+    const scheduled = isSettingScheduled(ds, settings);
     const p = plans && plans[ds];
     if (p && p.dayType === 'train')
         return scheduled ? 'skipped' : 'none';
@@ -1450,7 +1545,7 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
         return {
             dayType, mode, templateId: pick, yStatus: settingStatus(addDays(ds, -1), sessions, settings, plans),
             reasons, notes, fingerPain: fp, fingerAlert: fp !== null && fp >= 4, gap: null,
-            acwr: { ready: false }, tattoo,
+            acwr: { ready: false }, tattoo, away: isAway(ds, settings) ? awayLeft(ds, settings) : null,
         };
     }
     const ci = checkins[ds] && !checkins[ds].skipped ? checkins[ds] : null;
@@ -1463,6 +1558,7 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
     const hist = patternHistory(sessions, ds, 7);
     const lastTrain = trainSessions(sessions).filter((s) => s.date < ds).sort(byDateDesc)[0];
     const gap = lastTrain ? daysBetween(lastTrain.date, ds) : null;
+    const away = isAway(ds, settings) ? awayLeft(ds, settings) : null;
     const acwr = computeACWR(sessions, ds);
     let recovery = false;
     if (ci) {
@@ -1491,10 +1587,12 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
         reasons.push('Your last 7 days are well above your usual load, so today is an easy one.');
     }
     const fingerPain = ci && typeof ci.finger === 'number' ? ci.finger : null;
-    if (gap !== null && gap >= 10)
-        notes.push(gap + ' days since your last session. Ease back in: a full warm-up and about 70% effort today.');
-    else if (gap !== null && gap >= 3)
-        notes.push(gap + ' days since your last session. Just pick up from here, no catching up.');
+    if (!away) {
+        if (gap !== null && gap >= 10)
+            notes.push(gap + ' days since your last session. Ease back in: a full warm-up and about 70% effort today.');
+        else if (gap !== null && gap >= 3)
+            notes.push(gap + ' days since your last session. Just pick up from here, no catching up.');
+    }
     // Anything whose main job was covered in the last two days waits a day, whether that came
     // from a session in the plan or from something you logged yourself.
     const covered = (tid) => {
@@ -1504,7 +1602,7 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
     };
     const avoid = MODES[mode].templates.filter((tid) => covered(tid));
     const basePick = pickRotation(sessions, mode, ds);
-    const pick = recovery ? 'REC' : pickRotation(sessions, mode, ds, avoid);
+    let pick = recovery ? 'REC' : pickRotation(sessions, mode, ds, avoid);
     if (!recovery && dayType === 'train') {
         if (hardDays3 >= 2 && yRest)
             notes.push('You rested yesterday after ' + hardDays3 + ' hard sessions, so a normal session is fine.');
@@ -1526,9 +1624,13 @@ function getRecommendation({ sessions, checkins, settings, plans, ds }) {
         if (why.length && (pick === 'A' || pick === 'B' || pick === 'CORE'))
             notes.push('Keep it moderate and stop 3 reps short, because ' + why.join(' and ') + '.');
     }
+    if (away && TEMPLATES[pick] && TEMPLATES[pick].needsGym) {
+        notes.push(TEMPLATES[pick].name + ' needs a gym, so it waits until you\u2019re home. This one needs a floor.');
+        pick = 'HOTEL';
+    }
     return {
         dayType, mode, templateId: pick, yStatus,
-        reasons, notes, fingerPain, fingerAlert: fingerPain !== null && fingerPain >= 4, gap, acwr, tattoo,
+        reasons, notes, fingerPain, fingerAlert: fingerPain !== null && fingerPain >= 4, gap, acwr, tattoo, away,
     };
 }
 /* ---------- Weekly consistency (setting days never break anything) ---------- */
@@ -1878,9 +1980,16 @@ function buildStatus(ctx) {
     const ts = tattooState(settings, today);
     if (ts)
         L.push('Tattoo recovery: day ' + ts.day + ' of ' + ts.total + ', ' + ts.placement.toLowerCase() + (ts.rehabPaused ? ', physio rehab paused until day ' + ts.rehabBackOn : '') + '. No gripping, hanging, chalk or weight held in the hands. Back to ' + (MODES[settings.modeBefore] ? MODES[settings.modeBefore].name.toLowerCase() : 'normal training') + ' afterwards.');
+    if (settings.mode === 'build') {
+        const c = crimpStage(settings, today);
+        L.push('Crimping: stage ' + c.i + ' of 4, ' + c.stage.stage.replace(/^Stage \d+: /, '') + (c.days !== null ? ', day ' + c.days + ' on it' : '') + '. ' + (c.i >= 4 ? 'Crimping is back on the wall.' : 'Open hand only on the wall.'));
+    }
     if (settings.express)
         L.push('Short versions are switched on, so sessions are trimmed to their main lifts.');
-    L.push('Routesetting days: ' + ((settings.settingDays || []).map((d) => DOW_SHORT[d]).join(', ') || 'none'));
+    const upcoming = (settings.settingDates || []).filter((d) => d >= today).sort();
+    L.push('Routesetting days: ' + ((settings.settingDays || []).map((d) => DOW_SHORT[d]).join(', ') || 'no weekly pattern') + (upcoming.length ? '; dated shifts ' + upcoming.map((d) => fmtDate(d)).join(', ') : ''));
+    const aw = awayLeft(today, settings);
+    if (aw && !aw.over) L.push('Away from my gym ' + fmtDate(aw.from) + ' to ' + fmtDate(aw.to) + ' (day ' + aw.day + ' of ' + aw.total + '). Bodyweight only for anything that needs a rack.');
     L.push('This week: ' + weekCount(sessions, today) + ' of my ' + settings.weeklyTarget + '-session target');
     L.push('Physio rehab this week (aim ' + REHAB_TARGET.text + ' each): ' + REHAB_IDS.map((tid) => TEMPLATES[tid].name.toLowerCase() + ' ' + rehabWeekCount(sessions, tid, today)).join(', '));
     L.push(climbVolumeText(climbVolume(sessions, today)));
@@ -2678,6 +2787,78 @@ function AssessmentCard({ ctx }) {
             React.createElement("button", { className: "btn ghost sm", onClick: () => updateSettings({ assessmentSnooze: addDays(today, 3) }) }, "Remind me in 3 days"))));
 }
 /* ---------- Tattoo recovery: where you are in the healing, and the rules for today ---------- */
+/* ---------- Is this still the right plan? ---------- */
+function ModeReviewCard({ ctx, age }) {
+    const { settings, updateSettings, today, showToast } = ctx;
+    const name = MODES[settings.mode].name.toLowerCase();
+    return (React.createElement("section", { className: "card", style: { '--accent': 'var(--gold)', paddingLeft: 20 } },
+        React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+        React.createElement("h2", { className: "h2" }, "Still the right plan?"),
+        React.createElement("p", { className: "small" },
+            "You\u2019ve been on ", name, " for ", age.weeks, " weeks, since ", fmtDate(age.since), ". ",
+            "A plan written for how an injury felt then shouldn\u2019t still be running now without anyone checking. If the finger has moved on, the plan should move with it."),
+        React.createElement("div", { className: "row wrap" },
+            React.createElement("button", { className: "btn primary sm", onClick: () => { showToast('Change your mode here'); ctx.goTo('body'); } }, "Change the plan"),
+            React.createElement("button", { className: "btn ghost sm", onClick: () => updateSettings({ modeReviewSnooze: addDays(today, 14) }) }, "It\u2019s still right"))));
+}
+
+/* ---------- Crimping, staged back in ---------- */
+function CrimpCard({ ctx, crimp }) {
+    const { updateSettings, today, showToast } = ctx;
+    const [open, setOpen] = useState(false);
+    const move = (d) => {
+        updateSettings({ gripStage: crimp.i + d, gripStageSince: today });
+        showToast(d > 0 ? 'Stage ' + (crimp.i + d) + '. Take it slowly.' : 'Back a stage. Sensible.');
+    };
+    return (React.createElement("section", { className: "card", style: { '--accent': 'var(--rust)', paddingLeft: 20 } },
+        React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+        React.createElement("div", { className: "row between", style: { alignItems: 'baseline' } },
+            React.createElement("h2", { className: "h2", style: { margin: 0 } }, "Crimping"),
+            React.createElement("span", { className: "small num" }, "Stage ", crimp.i, " of 4")),
+        React.createElement("p", { className: "small", style: { margin: '6px 0 0' } },
+            React.createElement("span", { style: { color: 'var(--text)' } }, crimp.stage.stage.replace(/^Stage \d+: /, '')), ". ", crimp.stage.detail),
+        crimp.days !== null ? React.createElement("p", { className: "small", style: { margin: '6px 0 0' } },
+            crimp.days === 0 ? 'Started today.' : 'Day ' + crimp.days + ' on this stage.',
+            crimp.last ? '' : crimp.ready ? ' You\u2019ve done the time. If it\u2019s been quiet throughout, move up.' : ' ' + (crimp.hold - crimp.days) + ' more clean days before moving up.') : null,
+        React.createElement("div", { className: "row wrap", style: { marginTop: 10 } },
+            crimp.last ? null : React.createElement("button", { className: 'btn sm' + (crimp.ready ? ' primary' : ''), onClick: () => move(1) }, "Move up a stage"),
+            crimp.i > 0 ? React.createElement("button", { className: "btn ghost sm", onClick: () => move(-1) }, "Step back") : null,
+            React.createElement("button", { className: "link", onClick: () => setOpen(!open) }, open ? 'Hide the ladder' : 'See the whole ladder')),
+        open ? React.createElement(StageList, { items: GRIP_STAGES.crimp }) : null,
+        React.createElement("p", { className: "small", style: { margin: '8px 0 0' } },
+            crimp.i >= 4 ? 'Crimping is back on the wall. Keep it to a few problems a session at first.'
+                : 'On the wall until stage 4: open hand, slopers, pinches and jugs. Any problem that forces a small crimp is a problem for later, not a grip to get away with.')));
+}
+
+const AWAY_PACK = [
+    'A resistance band. It stands in for every dumbbell on the plan.',
+    'Your portable edge. Bloc lifts need nothing else: a strap, a bag and something to put in it.',
+    'Tape, and anything you normally use to warm up your fingers.',
+];
+function AwayCard({ ctx, away }) {
+    const { settings, updateSettings, showToast } = ctx;
+    const clear = () => { updateSettings({ away: null }); showToast('Welcome back'); };
+    if (away.over) {
+        return (React.createElement("section", { className: "card", style: { '--accent': 'var(--teal)', paddingLeft: 20 } },
+            React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+            React.createElement("h2", { className: "h2" }, "Home again"),
+            React.createElement("p", { className: "small" }, "Your gym days are back on the plan. The first one back is a normal session, not a catch-up session."),
+            React.createElement("button", { className: "btn primary sm", style: { marginTop: 10 }, onClick: clear }, "Back to the usual plan")));
+    }
+    return (React.createElement("section", { className: "card", style: { '--accent': 'var(--sky)', paddingLeft: 20 } },
+        React.createElement("span", { className: "tape", "aria-hidden": "true" }),
+        React.createElement("div", { className: "row between", style: { alignItems: 'baseline' } },
+            React.createElement("h2", { className: "h2", style: { margin: 0 } }, "Away from your gym"),
+            React.createElement("span", { className: "small num" }, "Day ", away.day, " of ", away.total)),
+        React.createElement(Dots, { n: away.day, of: away.total }),
+        React.createElement("p", { className: "small", style: { margin: '8px 0 0' } },
+            React.createElement("span", { style: { color: 'var(--text)' } }, "Climbing and finger work carry on. "),
+            "Barbell and dumbbell days are swapped for a bodyweight session you can do in a room, and the plan won\u2019t nag you about gaps between sessions while you\u2019re away."),
+        React.createElement("p", { className: "small", style: { margin: '10px 0 4px', color: 'var(--text)' } }, "Worth packing"),
+        React.createElement("ul", { className: "rule-list" }, AWAY_PACK.map((r) => React.createElement("li", { key: r }, r))),
+        React.createElement("p", { className: "note", style: { margin: '10px 0 0' } }, "Sessions away still count. Log them like any other, and a gym session that isn\u2019t on the plan goes in under anything else you did."),
+        React.createElement("button", { className: "link", style: { color: 'var(--muted)', marginTop: 10 }, onClick: clear }, "I\u2019m back early")));
+}
 function TattooCard({ ctx, tattoo }) {
     const { settings, updateSettings, showToast } = ctx;
     const [open, setOpen] = useState(false);
@@ -2848,7 +3029,9 @@ function TodayView({ ctx }) {
     // Rehab never uses up the day: the planned session stays on offer after it.
     const doneToday = sessions.filter((s) => s.date === today && s.kind === 'train' && isFinished(s) && !isRehab(s)).sort(byDateDesc);
     const showRehab = !active && rehabVisible(sessions, injuries, today);
-    const templateId = plan.templateId && templateAllowed(plan.templateId, settings.mode) ? plan.templateId : rec.templateId;
+    const pinned = plan.templateId && templateAllowed(plan.templateId, settings.mode) ? plan.templateId : rec.templateId;
+    // A session you picked yourself still can't be done without the gym.
+    const templateId = rec.away && TEMPLATES[pinned] && TEMPLATES[pinned].needsGym ? 'HOTEL' : pinned;
     const tpl = TEMPLATES[templateId];
     const target = settings.weeklyTarget || 3;
     const weekN = weekCount(sessions, today);
@@ -2862,6 +3045,9 @@ function TodayView({ ctx }) {
     const yesterday = addDays(today, -1);
     const showAssessment = settings.assessment !== 'done' && injuries.some((i) => i.status === 'active' && !i.assessed) &&
         !(settings.assessment === 'todo' && settings.assessmentSnooze && settings.assessmentSnooze > today);
+    // Temporary modes run themselves out, so they don't need reviewing.
+    const age = settings.mode === 'tattoo' ? null : modeAge(settings, sessions, today);
+    const modeReview = age && age.due && !(settings.modeReviewSnooze && settings.modeReviewSnooze > today) ? age : null;
     const start = (tid) => {
         setPlans((prev) => ({ ...prev, [today]: { ...(prev[today] || {}), templateId: tid, rest: false } }));
         setSessions((prev) => [...prev, newSession(tid, today, settings.mode, settings.express)]);
@@ -2889,6 +3075,7 @@ function TodayView({ ctx }) {
         if (window.confirm('Discard this session? Anything you logged in it will be deleted.'))
             setSessions((prev) => prev.filter((x) => x.id !== active.id));
     };
+    const aw = awayLeft(today, settings);
     const isSetting = rec.dayType === 'setting';
     const title = active ? active.label : isSetting ? 'Setting day' : plan.rest ? 'Rest day' : doneToday.length ? 'Done for today' : tpl.name;
     const subtitle = active ? (TEMPLATES[active.templateId] || {}).focus : isSetting ? 'Work comes first today' : plan.rest ? 'Recovery is part of the plan' : doneToday.length ? doneToday.map((s) => s.label).join(' and ') + ' logged' : tpl.focus;
@@ -2921,6 +3108,9 @@ function TodayView({ ctx }) {
                     React.createElement("span", { className: "num" }, b.label)))) : null,
             React.createElement("button", { className: "link", onClick: () => setCelebration(null) }, "Close"))) : null,
         rec.tattoo ? React.createElement(TattooCard, { ctx: ctx, tattoo: rec.tattoo }) : null,
+        aw && (rec.away || aw.over) ? React.createElement(AwayCard, { ctx: ctx, away: aw }) : null,
+        modeReview ? React.createElement(ModeReviewCard, { ctx: ctx, age: modeReview }) : null,
+        settings.mode === 'build' && !active ? React.createElement(CrimpCard, { ctx: ctx, crimp: crimpStage(settings, today) }) : null,
         showAssessment ? React.createElement(AssessmentCard, { ctx: ctx }) : null,
         isSetting && !active ? React.createElement(SettingDayCard, { ctx: ctx }) : (React.createElement("div", null,
             !active && (!ci || ciEditing) && !doneToday.length ? (React.createElement(CheckinCard, { initial: ci, hasGrip: hasGrip, onCancel: ciEditing ? () => setCiEditing(false) : null, onSave: (d) => { setCheckins((prev) => ({ ...prev, [today]: { ...d, at: nowIso() } })); setCiEditing(false); }, onSkip: () => setCheckins((prev) => ({ ...prev, [today]: { skipped: true, at: nowIso() } })) })) : null,
@@ -3380,21 +3570,42 @@ function ModeSheet({ mode, settings, today, onSet, onTattoo, onClose }) {
             React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, disabled: !start, onClick: () => onTattoo({ start, days: Number(days) || TATTOO_DEFAULT_DAYS, area }) }, "Start tattoo recovery"),
             React.createElement("button", { className: "link", onClick: () => setInk(false) }, "Back")));
     }
+    const Step = ({ id, title, blurb, need, go }) => (React.createElement("div", { style: { marginTop: 16 } },
+        React.createElement("div", { className: "label", style: { marginTop: 0 } }, title),
+        React.createElement("p", { className: "small", style: { margin: '0 0 6px' } }, blurb),
+        need ? need.map((n, k) => React.createElement(CheckLine, { key: k, on: k ? c2 : c1, set: k ? setC2 : setC1, text: n })) : null,
+        React.createElement("button", { className: "btn primary block", style: { marginTop: 10 },
+            disabled: need ? (need.length > 1 ? !(c1 && c2) : !c1) : false, onClick: go }, "Switch to " + MODES[id].name.toLowerCase())));
+    const back = (id, label) => React.createElement("button", { key: id, className: "btn block", style: { marginTop: 10 }, onClick: () => onSet(id) }, label);
     return (React.createElement(Sheet, { title: "Change mode", onClose: onClose },
         mode === 'layoff' ? (React.createElement("div", null,
-            React.createElement("p", { className: "small" }, "Grip reintroduction adds easy climbing on big holds. It needs a physio\u2019s clearance first."),
-            React.createElement(CheckLine, { on: c1, set: setC1, text: "A physio has examined my finger and cleared me to start climbing again" }),
-            React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, disabled: !c1, onClick: () => onSet('return') }, "Start grip reintroduction"))) : null,
+            React.createElement(Step, { id: 'return', title: 'If you are only just back on the wall',
+                blurb: 'Easy climbing on big holds, once a week, alongside your strength sessions. The careful first step.',
+                need: ['A physio has examined my finger and cleared me to start climbing again'],
+                go: () => onSet('return') }),
+            React.createElement(Step, { id: 'build', title: 'If you are already climbing',
+                blurb: 'Climbing becomes the main event: a limit session, a volume session, one strength day, and crimps staged back in. Over a four-session week that is three days climbing to one in the gym. Sets your weekly target to 4.',
+                need: ['A physio has cleared me to climb', 'I am climbing already and the finger is coping with it'],
+                go: () => onSet('build', { weeklyTarget: 4 }) }))) : null,
         mode === 'return' ? (React.createElement("div", null,
-            React.createElement("p", { className: "small" }, "Full training brings back crimping, power endurance and grip position work."),
-            React.createElement(CheckLine, { on: c1, set: setC1, text: "My physio has cleared me for full training, including crimping" }),
-            React.createElement(CheckLine, { on: c2, set: setC2, text: "I\u2019ve had 2\u20133 weeks of reintroduction with no flare-ups" }),
-            React.createElement("button", { className: "btn primary block", style: { marginTop: 14 }, disabled: !(c1 && c2), onClick: () => onSet('full') }, "Move to full training"),
-            React.createElement("button", { className: "btn block", style: { marginTop: 10 }, onClick: () => onSet('layoff') }, "Back to the rebuild"))) : null,
+            React.createElement(Step, { id: 'build', title: 'Ready to try hard again',
+                blurb: 'Climbing becomes the main event: a limit session, a volume session, one strength day, and crimps staged back in. Over a four-session week that is three days climbing to one in the gym. Sets your weekly target to 4.',
+                need: ['Easy climbing has been fine for 2\u20133 weeks with no flare-ups'],
+                go: () => onSet('build', { weeklyTarget: 4 }) }),
+            back('layoff', 'Back to the rebuild'))) : null,
+        mode === 'build' ? (React.createElement("div", null,
+            React.createElement(Step, { id: 'full', title: 'The whole plan',
+                blurb: 'Power endurance, grip positions, technique and outdoor days. This one assumes you can crimp.',
+                need: ['My physio has cleared me for full training, including crimping', 'I am through the crimp ladder with no flare-ups'],
+                go: () => onSet('full') }),
+            React.createElement("p", { className: "small", style: { marginTop: 16 } }, "Something flared up? Step back any time. No questions asked."),
+            back('return', 'Back to grip reintroduction'),
+            back('layoff', 'Back to the rebuild'))) : null,
         mode === 'full' ? (React.createElement("div", null,
             React.createElement("p", { className: "small" }, "Something flared up? Step back any time. No questions asked."),
-            React.createElement("button", { className: "btn block", onClick: () => onSet('return') }, "Back to grip reintroduction"),
-            React.createElement("button", { className: "btn block", style: { marginTop: 10 }, onClick: () => onSet('layoff') }, "Back to the rebuild"))) : null,
+            back('build', 'Back to bouldering, open hand'),
+            back('return', 'Back to grip reintroduction'),
+            back('layoff', 'Back to the rebuild'))) : null,
         React.createElement("div", { className: "divider" }),
         React.createElement("p", { className: "small", style: { marginTop: 0 } }, "Getting tattooed? Fresh ink rules out heavy sweating and anything that rubs, for about two weeks."),
         React.createElement("button", { className: "btn block", onClick: () => setInk(true) }, "Set up tattoo recovery")));
@@ -3468,7 +3679,7 @@ function BodyView({ ctx }) {
             React.createElement("span", { className: "pill resolved" }, "Resolved"),
             React.createElement("span", { style: { display: 'block', marginTop: 6 } }, i.name)))) : null,
         editing ? React.createElement(InjurySheet, { injury: editing === 'new' ? null : editing, onClose: () => setEditing(null), onSave: saveInjury, onDelete: (id) => { setInjuries((prev) => prev.filter((x) => x.id !== id)); setEditing(null); } }) : null,
-        modeOpen ? (React.createElement(ModeSheet, { mode: settings.mode, settings: settings, today: today, onClose: () => setModeOpen(false), onSet: (m) => { updateSettings({ mode: m, ...(settings.mode === 'tattoo' ? { tattooStart: null, modeBefore: null } : {}) }); setModeOpen(false); showToast('Mode: ' + MODES[m].name); }, onTattoo: ({ start, days, area }) => { updateSettings({ mode: 'tattoo', modeBefore: settings.mode, tattooStart: start, tattooDays: days, tattooArea: area }); setModeOpen(false); showToast('Tattoo recovery from ' + fmtDate(start)); } })) : null));
+        modeOpen ? (React.createElement(ModeSheet, { mode: settings.mode, settings: settings, today: today, onClose: () => setModeOpen(false), onSet: (m, extra) => { updateSettings({ mode: m, modeSince: today, modeReviewSnooze: null, ...(extra || {}), ...(settings.mode === 'tattoo' ? { tattooStart: null, modeBefore: null } : {}) }); setModeOpen(false); showToast('Mode: ' + MODES[m].name); }, onTattoo: ({ start, days, area }) => { updateSettings({ mode: 'tattoo', modeBefore: settings.mode, tattooStart: start, tattooDays: days, tattooArea: area }); setModeOpen(false); showToast('Tattoo recovery from ' + fmtDate(start)); } })) : null));
 }
 function CoachView({ ctx, onBack }) {
     const text = buildStatus(ctx);
@@ -3579,7 +3790,7 @@ function MovementView({ onBack }) {
     const byId = {};
     MOVEMENT_DRILLS.forEach((d) => { byId[d.id] = d; });
     return (React.createElement("div", null,
-        React.createElement(SubHeader, { title: "Movement drills", onBack: onBack, intro: "Climbing is a four-limbed sport, so coordination trained on the floor carries over to the wall. Alternate routine A and B in Session C." }),
+        React.createElement(SubHeader, { title: "Movement drills", onBack: onBack, intro: "Climbing is a four-limbed sport, so coordination trained on the floor carries over to the wall. Alternate routine A and B in Session C. These are travelling drills, not done on the spot: tap one to see it move." }),
         React.createElement("div", { className: "label" }, "Videos and articles"),
         React.createElement("section", { className: "card", style: { padding: '4px 16px' } }, MOVEMENT_LINKS.map((l) => React.createElement("a", { key: l.url, className: "list-row", href: l.url, target: "_blank", rel: "noopener noreferrer" }, l.label))),
         React.createElement("div", { className: "label" }, "Routines"),
@@ -3596,11 +3807,14 @@ function MovementView({ onBack }) {
             React.createElement("button", { className: "row between", style: { width: '100%' }, onClick: () => setOpen(open === d.id ? null : d.id), "aria-expanded": open === d.id },
                 React.createElement("span", null,
                     React.createElement("span", { style: { display: 'block', fontWeight: 650 } }, d.name),
-                    React.createElement("span", { className: "small" }, d.dose)),
+                    React.createElement("span", { className: "small" },
+                        d.dose,
+                        d.travel ? ' · ' + d.travel : '')),
                 React.createElement(IconChevron, { dir: open === d.id ? 'up' : 'down', size: 18 })),
             open === d.id ? (React.createElement("div", { style: { marginTop: 12 } },
                 React.createElement(DrillIllustration, { type: d.illus }),
-                React.createElement("p", { className: "how", style: { marginTop: 10 } }, d.steps),
+                d.travel ? React.createElement("p", { className: "small", style: { margin: '8px 0 0', color: 'var(--teal)' } }, d.travel) : null,
+                React.createElement("p", { className: "how", style: { marginTop: 8 } }, d.steps),
                 React.createElement("p", { className: "small", style: { color: 'var(--gold)', margin: 0 } }, d.why))) : null)))));
 }
 function ShoulderView({ onBack }) {
@@ -3653,8 +3867,26 @@ function SettingsView({ ctx, onBack }) {
         React.createElement(SubHeader, { title: "Settings", onBack: onBack }),
         React.createElement("section", { className: "card" },
             React.createElement("h2", { className: "h3" }, "Setting days"),
-            React.createElement("p", { className: "small" }, "Your usual routesetting days. For a one-off change, use \u201CSetting today?\u201D on the Today screen."),
-            React.createElement(ChipRow, { multi: true, small: true, options: dayOpts, value: settings.settingDays, onChange: (v) => updateSettings({ settingDays: v || [] }) })),
+            React.createElement("p", { className: "small" }, "Your usual routesetting days, week in week out. Leave them all off for a month where the shifts don\u2019t follow a pattern, and list the dates below instead."),
+            React.createElement(ChipRow, { multi: true, small: true, options: dayOpts, value: settings.settingDays, onChange: (v) => updateSettings({ settingDays: v || [] }) }),
+            React.createElement("div", { className: "label" }, "Specific dates"),
+            React.createElement("p", { className: "small", style: { margin: '0 0 8px' } }, "One-off shifts, on top of the pattern above. Past dates drop off on their own."),
+            (settings.settingDates || []).filter((d) => d >= today).sort().map((d) => (React.createElement("div", { key: d, className: "list-row" },
+                React.createElement("span", null, fmtDate(d, { weekday: 'long', month: 'short', day: 'numeric' })),
+                React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, "aria-label": 'Remove ' + d, onClick: () => updateSettings({ settingDates: (settings.settingDates || []).filter((x) => x !== d) }) }, "Remove")))),
+            React.createElement("input", { className: "field text", type: "date", "aria-label": "Add a setting date", value: "", onChange: (e) => {
+                const v = e.target.value;
+                if (v && (settings.settingDates || []).indexOf(v) < 0) updateSettings({ settingDates: (settings.settingDates || []).concat([v]).sort() });
+            } })),
+        React.createElement("section", { className: "card" },
+            React.createElement("h2", { className: "h3" }, "Away from your gym"),
+            React.createElement("p", { className: "small" }, "A trip, with no rack and no machines. While it runs, anything needing a gym is swapped for a bodyweight session, and a thin week stops counting as a gap."),
+            React.createElement("div", { className: "row" },
+                React.createElement("label", { className: "small", style: { flex: 1 } }, "From",
+                    React.createElement("input", { className: "field", type: "date", "aria-label": "Away from", value: (settings.away && settings.away.from) || '', onChange: (e) => updateSettings({ away: { ...(settings.away || {}), from: e.target.value } }) })),
+                React.createElement("label", { className: "small", style: { flex: 1 } }, "Until",
+                    React.createElement("input", { className: "field", type: "date", "aria-label": "Away until", value: (settings.away && settings.away.to) || '', onChange: (e) => updateSettings({ away: { ...(settings.away || {}), to: e.target.value } }) }))),
+            settings.away && settings.away.from && settings.away.to ? (React.createElement("button", { className: "link", style: { color: 'var(--muted)' }, onClick: () => updateSettings({ away: null }) }, "Clear the trip")) : null),
         React.createElement("section", { className: "card" },
             React.createElement("h2", { className: "h3" }, "Weekly session target"),
             React.createElement("p", { className: "small" }, "Setting shifts don\u2019t count toward it, and they never break a streak."),
